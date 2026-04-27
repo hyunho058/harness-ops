@@ -1,0 +1,26 @@
+{
+  "skill_name": "check-harness",
+  "evals": [
+    {
+      "id": 1,
+      "name": "default-scope-asks",
+      "prompt": "/check-harness",
+      "expected_output": "Phase 0 asks scope via AskUserQuestion, then runs matching subagents in parallel and generates the report file",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "overall-scope-explicit",
+      "prompt": "/check-harness overall — check my full Claude Code setup. I want to see which skills are dead and how I'm using agents.",
+      "expected_output": "Skip Per-Project subagents (CONTEXT, AUTOMATION), run only Overall 2 (PORTFOLIO, SESSION) in parallel. Report includes Portfolio Health + Execution Pattern only",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "natural-language-trigger",
+      "prompt": "What's missing in the harness? Run a full project diagnosis.",
+      "expected_output": "Trigger maps to /check-harness with 'project' or 'all' scope. Runs Per-Project subagents and includes CLAUDE.md/rules/hooks quality report",
+      "files": []
+    }
+  ]
+}

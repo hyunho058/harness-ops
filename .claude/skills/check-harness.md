@@ -1,0 +1,1 @@
+../../skills/check-harness/SKILL.md

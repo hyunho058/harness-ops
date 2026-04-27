@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "harness-marketplace",
+  "description": "Harness Engineering session plugin for Claude Code workflow automation",
+  "owner": {
+    "name": "hyunhokim"
+  },
+  "plugins": [
+    {
+      "name": "harness",
+      "description": "Session harness plugin — QA, scaffold, specify, check-harness, deep-interview, doc-drift, agent-orchestrate",
+      "category": "productivity",
+      "source": "./plugins/harness"
+    }
+  ]
+}

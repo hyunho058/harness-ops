@@ -1,0 +1,39 @@
+# Mac OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.*
+!.env.example
+*.pem
+secrets/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Logs
+*.log
+
+# Generated reports
+.drift-reports/
+.harness/check-reports/
+check-reports/
+
+# Cache
+.cache/
+tmp/
+temp/

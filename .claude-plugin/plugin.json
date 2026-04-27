@@ -1,0 +1,5 @@
+{
+  "name": "harness",
+  "version": "0.0.1",
+  "description": "Session harness plugin for Claude Code workflow automation"
+}
