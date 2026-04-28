@@ -1,6 +1,6 @@
 ---
-description: Detects drift between Claude memory and documentation — audits how far CLAUDE.md, memory, and specs deviate from the actual code reality
-argument-hint: "[--memory|--claude-md|--spec|--all]"
+description: Audits all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording
+argument-hint: "[recent [N] | path <glob>]"
 allowed-tools: [Read, Grep, Glob, Bash, Write, Agent]
 ---
 
