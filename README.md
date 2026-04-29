@@ -14,7 +14,7 @@ The art of designing environments where AI agents work well — 7 skills coverin
 | **deep-interview** | Socratic requirements interview — clarifies ambiguous goals through structured questioning | `/harness:deep-interview "topic"` |
 | **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness:qa [target]` |
 | **doc-drift** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness:doc-drift` |
-| **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (parallel / sequential / hierarchical) | `/harness:agent-orchestrate "task"` |
+| **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness:agent-orchestrate "task"` |
 
 ## Subagents
 
