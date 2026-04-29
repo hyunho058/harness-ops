@@ -1,0 +1,6 @@
+description = "Analyze a task and execute the optimal orchestration pattern (parallel / sequential / hierarchical)"
+prompt = """
+@{.gemini/skills/agent-orchestrate/SKILL.md}
+
+User arguments: {{args}}
+"""

@@ -1,0 +1,6 @@
+description = "Diagnose harness maturity via 6-axis / 24-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents."
+prompt = """
+@{.gemini/skills/check-harness/SKILL.md}
+
+User arguments: {{args}}
+"""

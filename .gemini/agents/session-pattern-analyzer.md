@@ -1,0 +1,1 @@
+../../agents/session-pattern-analyzer.md
