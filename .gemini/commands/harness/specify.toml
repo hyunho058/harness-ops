@@ -1,0 +1,6 @@
+description = "Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md)"
+prompt = """
+@{.gemini/skills/specify/SKILL.md}
+
+User arguments: {{args}}
+"""

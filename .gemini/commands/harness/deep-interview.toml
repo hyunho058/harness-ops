@@ -1,0 +1,6 @@
+description = "Socratic requirements interview — clarifies ambiguous goals through structured questioning"
+prompt = """
+@{.gemini/skills/deep-interview/SKILL.md}
+
+User arguments: {{args}}
+"""

@@ -1,0 +1,6 @@
+description = "Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context"
+prompt = """
+@{.gemini/skills/scaffold/SKILL.md}
+
+User arguments: {{args}}
+"""

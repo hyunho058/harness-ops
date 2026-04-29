@@ -1,0 +1,6 @@
+description = "Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report"
+prompt = """
+@{.gemini/skills/qa/SKILL.md}
+
+User arguments: {{args}}
+"""
