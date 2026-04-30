@@ -1,4 +1,4 @@
-# harness
+# harness-ops
 
 A Claude Code plugin for **Harness Engineering**.
 
@@ -31,32 +31,32 @@ Four specialized subagents used internally by `check-harness`:
 
 ```bash
 # 1. Add the harness marketplace (one-time)
-claude plugin marketplace add . --name harness-marketplace
+claude plugin marketplace add . --name harness-ops-marketplace
 
 # 2. Install the plugin globally
-claude plugin install harness@harness-marketplace
+claude plugin install harness-ops@harness-ops-marketplace
 ```
 
 ## Quick Start
 
 ```bash
 # Diagnose your current project's harness
-/harness:check-harness
+/harness-ops:check-harness
 
 # Scaffold a new project with AI-optimized structure
-/harness:scaffold
+/harness-ops:scaffold
 
 # Clarify unclear requirements through structured interview
-/harness:deep-interview "I'm not sure what to build"
+/harness-ops:deep-interview "I'm not sure what to build"
 
 # Turn a goal into a full implementation plan
-/harness:specify "implement user authentication"
+/harness-ops:specify "implement user authentication"
 
 # QA test a running app
-/harness:qa http://localhost:3000
+/harness-ops:qa http://localhost:3000
 
 # Check if your context docs are stale or contradictory
-/harness:doc-drift
+/harness-ops:doc-drift
 ```
 
 ## Project Structure
@@ -89,7 +89,7 @@ agents/                 # Subagent definitions
 hooks/
   hooks.json            # Hook registration
 plugins/
-  harness -> ../        # Symlink for marketplace path resolution
+  harness-ops -> ../    # Symlink for marketplace path resolution
 .claude/
   settings.json
 ```
@@ -99,7 +99,7 @@ plugins/
 Commands in `commands/` delegate to their corresponding `skills/` file:
 
 ```
-/harness:qa  →  commands/qa.md  →  reads skills/qa/SKILL.md
+/harness-ops:qa  →  commands/qa.md  →  reads skills/qa/SKILL.md
 ```
 
 `skills/` files are the single source of truth for all skill logic. Edits take effect immediately — no reinstall needed.
