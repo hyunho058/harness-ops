@@ -1,4 +1,4 @@
-# harness
+# harness-ops
 
 A Claude Code plugin for **Harness Engineering**.
 
@@ -8,13 +8,13 @@ The art of designing environments where AI agents work well — 7 skills coverin
 
 | Skill | Description | Command |
 |-------|-------------|---------|
-| **check-harness** | Diagnose harness maturity via 6-axis / 24-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents. | `/harness:check-harness` |
-| **scaffold** | Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context | `/harness:scaffold` |
-| **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md) | `/harness:specify "goal"` |
-| **deep-interview** | Socratic requirements interview — clarifies ambiguous goals through structured questioning | `/harness:deep-interview "topic"` |
-| **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness:qa [target]` |
-| **doc-drift** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness:doc-drift` |
-| **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness:agent-orchestrate "task"` |
+| **check-harness** | Diagnose harness maturity via 6-axis / 24-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents. | `/harness-ops:check-harness` |
+| **scaffold** | Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context | `/harness-ops:scaffold` |
+| **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md) | `/harness-ops:specify "goal"` |
+| **deep-interview** | Socratic requirements interview — clarifies ambiguous goals through structured questioning | `/harness-ops:deep-interview "topic"` |
+| **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness-ops:qa [target]` |
+| **doc-drift** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:doc-drift` |
+| **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness-ops:agent-orchestrate "task"` |
 
 ## Subagents
 
@@ -30,33 +30,33 @@ Four specialized subagents used internally by `check-harness`:
 ## Installation
 
 ```bash
-# 1. Add the harness marketplace (one-time)
-claude plugin marketplace add . --name harness-marketplace
+# 1. Add the harness marketplace (one-time, run from repo root)
+claude plugin marketplace add .
 
 # 2. Install the plugin globally
-claude plugin install harness@harness-marketplace
+claude plugin install harness-ops@harness-ops-marketplace
 ```
 
 ## Quick Start
 
 ```bash
 # Diagnose your current project's harness
-/harness:check-harness
+/harness-ops:check-harness
 
 # Scaffold a new project with AI-optimized structure
-/harness:scaffold
+/harness-ops:scaffold
 
 # Clarify unclear requirements through structured interview
-/harness:deep-interview "I'm not sure what to build"
+/harness-ops:deep-interview "I'm not sure what to build"
 
 # Turn a goal into a full implementation plan
-/harness:specify "implement user authentication"
+/harness-ops:specify "implement user authentication"
 
 # QA test a running app
-/harness:qa http://localhost:3000
+/harness-ops:qa http://localhost:3000
 
 # Check if your context docs are stale or contradictory
-/harness:doc-drift
+/harness-ops:doc-drift
 ```
 
 ## Project Structure
@@ -89,7 +89,7 @@ agents/                 # Subagent definitions
 hooks/
   hooks.json            # Hook registration
 plugins/
-  harness -> ../        # Symlink for marketplace path resolution
+  harness-ops -> ../    # Symlink for marketplace path resolution
 .claude/
   settings.json
 ```
@@ -99,7 +99,7 @@ plugins/
 Commands in `commands/` delegate to their corresponding `skills/` file:
 
 ```
-/harness:qa  →  commands/qa.md  →  reads skills/qa/SKILL.md
+/harness-ops:qa  →  commands/qa.md  →  reads skills/qa/SKILL.md
 ```
 
 `skills/` files are the single source of truth for all skill logic. Edits take effect immediately — no reinstall needed.

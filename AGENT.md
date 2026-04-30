@@ -18,7 +18,7 @@ agents/               # Subagent definitions used internally by skills
 commands/             # Slash command entry points — one .md per skill
 hooks/                # Lifecycle hooks (hooks.json registration + scripts)
 plugins/
-  harness             # Symlink → ../ for marketplace path resolution
+  harness-ops         # Symlink → ../ for marketplace path resolution
 skills/               # Core skill implementations (SKILL.md per skill is the source of truth)
   check-harness/      # Harness maturity assessment
   scaffold/           # Greenfield project harness scaffolding
