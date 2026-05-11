@@ -15,6 +15,7 @@ The art of designing environments where AI agents work well — 7 skills coverin
 | **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness-ops:qa [target]` |
 | **doc-drift** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:doc-drift` |
 | **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness-ops:agent-orchestrate "task"` |
+| **generate-team** | Design and build an agent team architecture — delegates to the `harness-factory` plugin (must be installed separately) | `/harness-ops:generate-team [description]` |
 
 ## Subagents
 
@@ -59,11 +60,25 @@ claude plugin install harness-ops@harness-ops-marketplace
 /harness-ops:doc-drift
 ```
 
+## Usage with Gemini CLI
+
+Gemini CLI has no plugin marketplace. Pass the skill file as context when you start a session:
+
+```bash
+gemini @skills/check-harness/SKILL.md "check my harness"
+gemini @skills/specify/SKILL.md "implement user authentication"
+gemini @skills/qa/SKILL.md "http://localhost:3000"
+```
+
+The `SKILL.md` files are plain markdown — the same files Claude Code uses, no duplication needed.
+
+---
+
 ## Project Structure
 
 ```
 .claude-plugin/
-  marketplace.json      # Marketplace manifest (source: ./plugins/harness)
+  marketplace.json      # Marketplace manifest (source: ./plugins/harness-ops)
   plugin.json           # Plugin manifest
 commands/               # Slash commands — one .md per skill
   qa.md
@@ -73,6 +88,7 @@ commands/               # Slash commands — one .md per skill
   deep-interview.md
   doc-drift.md
   agent-orchestrate.md
+  generate-team.md      # Bridge to harness-factory plugin
 skills/                 # Skill implementations
   check-harness/SKILL.md
   scaffold/SKILL.md
@@ -102,7 +118,7 @@ Commands in `commands/` delegate to their corresponding `skills/` file:
 /harness-ops:qa  →  commands/qa.md  →  reads skills/qa/SKILL.md
 ```
 
-`skills/` files are the single source of truth for all skill logic. Edits take effect immediately — no reinstall needed.
+`skills/` files are the single source of truth for all skill logic. Edits to the source repo take effect immediately via the `plugins/harness-ops -> ../` symlink — no reinstall needed for local development. For the globally-installed plugin cache, run `claude plugin update harness-ops` to sync changes.
 
 ## License
 
