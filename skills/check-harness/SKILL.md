@@ -172,7 +172,7 @@ For each of the 24 items, determine PASS/WEAK_PASS/FAIL/N/A and record an eviden
 |------|--------|-------|-----------------|
 | **1. Scaffolding** | PORTFOLIO | User | summary (A1–A5) |
 | **2. Context** | CONTEXT | Project | claude_md·rules·sensitive (C1–C6) |
-| **3. Planning** | SESSION_USER | User | plan_first_ratio (B2) |
+| **3. Planning** | SESSION_USER + AUTOMATION (fallback) | User | plan_first_ratio (B2) OR planning_artifacts_exist |
 | **4. Execution** | SESSION_USER + SESSION_PROJECT | User+Project | delegation/parallel/top_ngram (B3·B5·B6) — **computed for each scope separately** |
 | **5. Verification** | SESSION_PROJECT + AUTOMATION | Project | completion_check + D1–D5 |
 | **6. Compounding** | AUTOMATION.compounding + SESSION (wrap/memory) | Both | E1·B4·E2·E3 |
@@ -394,6 +394,13 @@ Sessions analyzed: User {Nu} / Project {Np} ({period}) · Scanned: {YYYY-MM-DD H
 ...
 
 ### Axis 3 — Planning (👤 User × Behavioral)
+
+> **B2 judgment rule** (OR condition):
+> 1. `SESSION_USER.metrics.plan_first_ratio ≥ 0.3` → PASS, evidence: `"plan_first_ratio: X.XX"`
+> 2. `AUTOMATION.planning_artifacts_exist == true` → PASS, evidence: `"planning artifacts found: specs/ (N files)"` — count from AUTOMATION
+> 3. AUTOMATION absent (User-scope-only run) → evaluate (1) only, no error
+> 4. Both false → FAIL
+
 ...
 
 ### Axis 4 — Execution (👤+📁 × Behavioral)
