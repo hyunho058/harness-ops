@@ -144,6 +144,3 @@ Commands in `commands/` delegate to their corresponding `skills/` file:
 
 `skills/` files are the single source of truth for all skill logic. Edits to the source repo take effect immediately via the `plugins/harness-ops -> ../` symlink — no reinstall needed for local development. For the globally-installed plugin cache, run `claude plugin update harness-ops` to sync changes.
 
-## License
-
-Internal use only.

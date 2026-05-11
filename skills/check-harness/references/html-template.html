@@ -18,7 +18,7 @@
     --na: #6b7280;
   }
   @media (prefers-color-scheme: light) {
-    :root { --bg:#fafbfc; --panel:#fff; --panel-2:#f4f6fa; --line:#e4e8ef; --fg:#1a1f2b; --muted:#5b6472; --accent:#2f5bf0; }
+    :root { --bg:#fafbfc; --panel:#fff; --panel-2:#f4f6fa; --line:#e4e8ef; --fg:#1a1f2b; --muted:#5b6472; --accent:#2f5bf0; --pass:#1e8c52; --weak:#a07800; --fail:#c0303d; }
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; }
@@ -28,12 +28,11 @@
   header.top .meta { color:var(--muted); font-size:13px; font-variant-numeric: tabular-nums; }
   .hero { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border:1px solid var(--line); border-radius:16px; padding:28px; margin-bottom:24px; }
   .hero .score-row { display:grid; grid-template-columns: auto 1fr; gap:24px; align-items:center; }
-  .score-gauge { width:140px; height:140px; border-radius:50%;
-    background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--line) 0);
-    display:grid; place-items:center; }
-  .score-gauge .inner { width:114px; height:114px; border-radius:50%; background:var(--panel); display:grid; place-items:center; text-align:center; }
-  .score-gauge .num { font-size:36px; font-weight:700; letter-spacing:-0.02em; }
-  .score-gauge .grade { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
+  .score-bar-widget { width:160px; display:flex; flex-direction:column; gap:6px; }
+  .score-bar-widget .num { font-size:52px; font-weight:700; letter-spacing:-0.03em; line-height:1; }
+  .score-bar-widget .grade { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
+  .score-bar-widget .track { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:4px; }
+  .score-bar-widget .track > span { display:block; height:100%; background:var(--accent); border-radius:4px; }
   .hero h2 { font-size: 18px; margin:0 0 8px; }
   .hero p.headline { font-size:16px; line-height:1.5; margin:0 0 16px; }
   .hero .sub-scores { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-top:12px; }
@@ -44,8 +43,8 @@
   .sub-score .bar > span { display:block; height:100%; background:var(--accent); }
   .strength-weak { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
   .strength-weak div { padding:12px; border-radius:10px; border:1px solid var(--line); }
-  .strength-weak .s { background: color-mix(in srgb, var(--pass) 8%, transparent); border-color: color-mix(in srgb, var(--pass) 40%, var(--line)); }
-  .strength-weak .w { background: color-mix(in srgb, var(--fail) 8%, transparent); border-color: color-mix(in srgb, var(--fail) 40%, var(--line)); }
+  .strength-weak .s { background: rgba(88, 214, 141, 0.08); border-color: rgba(88, 214, 141, 0.4); }
+  .strength-weak .w { background: rgba(239, 110, 122, 0.08); border-color: rgba(239, 110, 122, 0.4); }
   .strength-weak .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px; }
   section.cycle { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px 24px; margin-bottom:24px; }
   section.cycle h2 { font-size:16px; margin:0 0 12px; }
@@ -74,10 +73,10 @@
   article.axis th, article.axis td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
   article.axis th { color:var(--muted); font-weight:500; }
   article.axis td .st { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; }
-  article.axis td .st.pass { background: color-mix(in srgb, var(--pass) 18%, transparent); color: var(--pass); }
-  article.axis td .st.weak { background: color-mix(in srgb, var(--weak) 18%, transparent); color: var(--weak); }
-  article.axis td .st.fail { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
-  article.axis td .st.na   { background: color-mix(in srgb, var(--na) 18%, transparent);   color: var(--na); }
+  article.axis td .st.pass { background: rgba(88, 214, 141, 0.18); color: var(--pass); }
+  article.axis td .st.weak { background: rgba(244, 211, 107, 0.18); color: var(--weak); }
+  article.axis td .st.fail { background: rgba(239, 110, 122, 0.18); color: var(--fail); }
+  article.axis td .st.na   { background: rgba(107, 114, 128, 0.18); color: var(--na); }
   article.axis .next-move { margin:0; font-size:13px; color:var(--accent); }
   section.actions { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px 24px; margin-top:24px; }
   section.actions h2 { font-size:16px; margin:0 0 12px; }
@@ -99,78 +98,82 @@
   section.extra h3 { font-size:14px; margin:0 0 10px; }
   section.extra table { width:100%; border-collapse:collapse; font-size:13px; }
   section.extra th, section.extra td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; }
+  section.extra.full-width { grid-template-columns: 1fr; }
+  .section-heading { font-size:16px; margin:0 0 12px; }
   footer.foot { color:var(--muted); font-size:12px; text-align:center; margin-top:40px; }
 </style>
 </head>
 <body>
 <main>
   <header class="top">
-    <h1>🧭 Harness Maturity Report</h1>
+    <h1>Harness Maturity Report</h1>
     <div class="meta">{{GENERATED_AT}} · scope: <b>{{SCOPE}}</b> · project: <b>{{PROJECT_NAME}}</b></div>
   </header>
 
   <section class="hero">
     <div class="score-row">
-      <div class="score-gauge" style="--pct: {{HARNESS_SCORE}};">
-        <div class="inner">
-          <div class="num">{{HARNESS_SCORE}}</div>
-          <div class="grade">{{HARNESS_GRADE}}</div>
-        </div>
+      <!-- {{HARNESS_SCORE}} must be a plain integer 0–100 (no % suffix) -->
+      <div class="score-bar-widget">
+        <div class="num">{{HARNESS_SCORE}}</div>
+        <div class="grade">{{HARNESS_GRADE}}</div>
+        <div class="track"><span style="width:{{HARNESS_SCORE}}%"></span></div>
       </div>
       <div>
-        <h2>🎯 Summary</h2>
+        <h2>Summary</h2>
         <p class="headline">{{HEADLINE}}</p>
         <div class="sub-scores">
-          <div class="sub-score"><div class="lbl">👤 User · L{{USER_LEVEL}}</div><div class="val">{{USER_SCORE}}</div><div class="bar"><span style="width:{{USER_SCORE}}%"></span></div></div>
-          <div class="sub-score"><div class="lbl">📁 Project · L{{PROJECT_LEVEL}}</div><div class="val">{{PROJECT_SCORE}}</div><div class="bar"><span style="width:{{PROJECT_SCORE}}%"></span></div></div>
-          <div class="sub-score"><div class="lbl">🔁 Compounding · L{{COMPOUNDING_LEVEL}}</div><div class="val">{{COMPOUNDING_SCORE}}</div><div class="bar"><span style="width:{{COMPOUNDING_SCORE}}%"></span></div></div>
+          <div class="sub-score"><div class="lbl">User · L{{USER_LEVEL}}</div><div class="val">{{USER_SCORE}}</div><div class="bar"><span style="width:{{USER_SCORE}}%"></span></div></div>
+          <div class="sub-score"><div class="lbl">Project · L{{PROJECT_LEVEL}}</div><div class="val">{{PROJECT_SCORE}}</div><div class="bar"><span style="width:{{PROJECT_SCORE}}%"></span></div></div>
+          <div class="sub-score"><div class="lbl">Compounding · L{{COMPOUNDING_LEVEL}}</div><div class="val">{{COMPOUNDING_SCORE}}</div><div class="bar"><span style="width:{{COMPOUNDING_SCORE}}%"></span></div></div>
         </div>
         <div class="strength-weak">
-          <div class="s"><div class="lbl">✅ Strengths</div>{{STRENGTH}}</div>
-          <div class="w"><div class="lbl">⚠️ Areas to Improve</div>{{WEAKNESS}}</div>
+          <div class="s"><div class="lbl">Strengths</div>{{STRENGTH}}</div>
+          <div class="w"><div class="lbl">Areas to Improve</div>{{WEAKNESS}}</div>
         </div>
       </div>
     </div>
   </section>
 
   <section class="cycle">
-    <h2>🔄 Cycle Overview</h2>
+    <h2>Cycle Overview</h2>
+    <!-- renderer must emit at least one <li> or replace with: <li class="why">None</li> -->
     <ol>{{CYCLE_ROWS}}</ol>
   </section>
 
   <section>
-    <h2 style="font-size:16px;margin:0 0 12px;">📊 Axis Report (6 Axes)</h2>
+    <h2 class="section-heading">Axis Report (6 Axes)</h2>
     <div class="axes">{{AXIS_CARDS}}</div>
   </section>
 
   <section class="actions">
-    <h2>✅ Recommended Actions</h2>
+    <h2>Recommended Actions</h2>
     <div class="action-buckets">
-      <div class="bucket green"><h4>🟢 Quick Wins</h4><ul>{{ACTIONS_GREEN}}</ul></div>
-      <div class="bucket yellow"><h4>🟡 Worth Organizing</h4><ul>{{ACTIONS_YELLOW}}</ul></div>
-      <div class="bucket red"><h4>🔴 Long-term Improvements</h4><ul>{{ACTIONS_RED}}</ul></div>
+      <!-- each {{ACTIONS_*}} must contain at least one <li> or fall back to: <li><span class="why">None</span></li> -->
+      <div class="bucket green"><h4>Quick Wins</h4><ul>{{ACTIONS_GREEN}}</ul></div>
+      <div class="bucket yellow"><h4>Plan Next</h4><ul>{{ACTIONS_YELLOW}}</ul></div>
+      <div class="bucket red"><h4>Long-term Improvements</h4><ul>{{ACTIONS_RED}}</ul></div>
     </div>
   </section>
 
   <section class="extra">
     <div>
-      <h3>🔌 Runtime Inventory</h3>
+      <h3>Runtime Inventory</h3>
       {{INVENTORY_TABLE}}
     </div>
     <div>
-      <h3>🧭 2×3 Matrix (Static / Behavioral / Growth)</h3>
+      <h3>2×3 Matrix (Static / Behavioral / Growth)</h3>
       {{MATRIX_TABLE}}
     </div>
   </section>
 
-  <section class="extra" style="grid-template-columns:1fr;">
+  <section class="extra full-width">
     <div>
-      <h3>🔍 Findings</h3>
+      <h3>Detailed Findings</h3>
       {{FINDINGS_LIST}}
     </div>
   </section>
 
-  <footer class="foot">Generated by <code>/check-harness</code> · harness-session</footer>
+  <footer class="foot">Generated by <code>/check-harness</code> · {{SESSION_ID}}</footer>
 </main>
 </body>
 </html>
