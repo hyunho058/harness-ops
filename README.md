@@ -62,15 +62,37 @@ claude plugin install harness-ops@harness-ops-marketplace
 
 ## Usage with Gemini CLI
 
-Gemini CLI has no plugin marketplace. Pass the skill file as context when you start a session:
+The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads the `harness-ops/` subdirectory name as the namespace prefix, registering skills as `/harness-ops:skill-name`.
 
-```bash
-gemini @skills/check-harness/SKILL.md "check my harness"
-gemini @skills/specify/SKILL.md "implement user authentication"
-gemini @skills/qa/SKILL.md "http://localhost:3000"
+### Quick Start
+
+```
+/harness-ops:check-harness
+/harness-ops:specify "implement user authentication"
+/harness-ops:qa http://localhost:3000
+/harness-ops:scaffold
+/harness-ops:deep-interview "topic"
+/harness-ops:doc-drift
+/harness-ops:agent-orchestrate "task"
 ```
 
-The `SKILL.md` files are plain markdown — the same files Claude Code uses, no duplication needed.
+### Installation (global — available in any project)
+
+```bash
+# Symlink the harness-ops commands into the Gemini global commands directory
+ln -s /path/to/harness-ops/.gemini/commands/harness-ops ~/.gemini/commands/harness-ops
+```
+
+After linking, open any Gemini CLI session and type `/harness-ops` to see all 7 skills.
+
+### How it works
+
+| | Claude Code | Gemini CLI |
+|---|---|---|
+| **Install** | `claude plugin install harness-ops` | Symlink `.gemini/commands/harness-ops/` |
+| **Invoke** | `/harness-ops:check-harness` | `/harness-ops:check-harness` |
+| **Command definitions** | `commands/*.md` | `.gemini/commands/harness-ops/*.toml` |
+| **Skill logic** | `skills/{name}/SKILL.md` | same file (embedded in toml) |
 
 ---
 
@@ -108,6 +130,8 @@ plugins/
   harness-ops -> ../    # Symlink for marketplace path resolution
 .claude/
   settings.json
+.gemini/
+  commands/harness-ops/ # Gemini CLI skill definitions (one .toml per skill)
 ```
 
 ## How It Works
