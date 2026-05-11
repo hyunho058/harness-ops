@@ -58,7 +58,7 @@ All judgments come from the **gap between what is set up and what is actually do
 
 | # | Check Item | L | Why It Matters | Judgment Basis (SESSION) |
 |---|-----------|:-:|----------------|--------------------------|
-| B2 | Plan before execute — use specify/scaffold/plan skills | L2 | The quality gap between "start coding immediately" vs "plan first then execute" is large | `plan_first_ratio ≥ 0.3` |
+| B2 | Plan before execute — use specify/scaffold/plan skills | L2 | The quality gap between "start coding immediately" vs "plan first then execute" is large | `plan_first_ratio ≥ 0.3 OR planning_artifacts_exist` (artifact fallback requires Project scope) |
 
 ---
 

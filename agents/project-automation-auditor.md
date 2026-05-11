@@ -50,6 +50,10 @@ ls Dockerfile docker-compose*.yml .devcontainer/devcontainer.json 2>/dev/null
 git log --since="30 days ago" --name-only --pretty=format: -- CLAUDE.md 2>/dev/null | sort -u
 git log --since="90 days ago" --name-only --pretty=format: -- '.claude/rules/*' 'docs/learnings/*' 'skills/*' '.claude/skills/*' 'hooks/*' '.claude/hooks/*' 2>/dev/null | sort -u
 ls docs/learnings/ 2>/dev/null
+
+# Planning artifact detection (B2 fallback)
+find specs -name spec.md 2>/dev/null | wc -l
+find deep-interview-outputs -name insights.md 2>/dev/null | wc -l
 ```
 
 ## Step 2 — Evaluation Criteria
@@ -81,6 +85,10 @@ ls docs/learnings/ 2>/dev/null
 - `skills_added_90d`: Number of files added to `skills/` or `.claude/skills/` in the last 90 days (based on SKILL.md).
 - `hooks_added_90d`: Number of modifications to `hooks/` or `.claude/settings.json` in the last 90 days.
 - `docs_learnings_exist`: `docs/learnings/` directory exists or has ≥1 files.
+
+### planning_artifacts_exist
+- `find specs -name spec.md` returns ≥1 file OR `find deep-interview-outputs -name insights.md` returns ≥1 file.
+- Returns `true` if either condition is met, `false` otherwise.
 
 ### Risk findings
 - force-push policy: check if there are traces of reset/rebase in the last 10 commits — issue a warning if found.
@@ -114,6 +122,7 @@ ls docs/learnings/ 2>/dev/null
     "skills_added_90d": 1,
     "hooks_added_90d": 0,
     "docs_learnings_exist": false,
+    "planning_artifacts_exist": false,
     "evidence": ["CLAUDE.md updated 2026-04-02", ".claude/rules/testing.md added 2026-03-15"]
   },
   "risk_findings": [],
