@@ -27,6 +27,8 @@ skills/               # Core skill implementations (SKILL.md per skill is the so
   qa/                 # QA testing (browser/computer/cli)
   doc-drift/          # Documentation drift audit
   agent-orchestrate/  # Agent orchestration patterns
+.gemini/
+  commands/harness-ops/ # Gemini CLI command definitions
 ```
 
 ## Development Guidelines
