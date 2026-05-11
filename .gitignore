@@ -37,3 +37,6 @@ check-reports/
 .cache/
 tmp/
 temp/
+
+# Specs (local planning documents)
+specs/
