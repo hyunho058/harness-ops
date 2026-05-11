@@ -16,14 +16,14 @@
 
 |  | **Static** (set up) | **Behavioral** (doing) | **Δ/Growth** (accumulating) |
 |---|---|---|---|
-| **👤 User Scope** | 1. Scaffolding | 3. Planning · 4. Execution (shared) | 6. Compounding (shared) |
-| **📁 Project Scope** | 2. Context | 4. Execution (shared) · 5. Verification | 6. Compounding (shared) |
+| **User Scope** | 1. Scaffolding | 3. Planning · 4. Execution (shared) | 6. Compounding (shared) |
+| **Project Scope** | 2. Context | 4. Execution (shared) · 5. Verification | 6. Compounding (shared) |
 
 All judgments come from the **gap between what is set up and what is actually done**, or **whether the harness is growing**.
 
 ---
 
-## Axis 1 — Scaffolding · 👤 User × Static [5 items]
+## Axis 1 — Scaffolding · User × Static [5 items]
 
 > "What has been installed?" — Are installed skills/plugins/MCP organized and actually used?
 
@@ -37,7 +37,7 @@ All judgments come from the **gap between what is set up and what is actually do
 
 ---
 
-## Axis 2 — Context · 📁 Project × Static [6 items]
+## Axis 2 — Context · Project × Static [6 items]
 
 > "What does the AI know?" — Is project knowledge (CLAUDE.md·rules·MCP etc.) progressively exposed?
 
@@ -52,7 +52,7 @@ All judgments come from the **gap between what is set up and what is actually do
 
 ---
 
-## Axis 3 — Planning · 👤 User × Behavioral [1 item]
+## Axis 3 — Planning · User × Behavioral [1 item]
 
 > "Do you plan first?" — Do you use spec/plan·AskUserQuestion to eliminate ambiguity before saying "go"?
 
@@ -62,7 +62,7 @@ All judgments come from the **gap between what is set up and what is actually do
 
 ---
 
-## Axis 4 — Execution · 👤+📁 × Behavioral [3 items]
+## Axis 4 — Execution · User+Project × Behavioral [3 items]
 
 > "How do you assign work?" — Solo vs delegating to subagents, how is work arranged via team·subagent·orchestration?
 
@@ -76,7 +76,7 @@ All judgments come from the **gap between what is set up and what is actually do
 
 ---
 
-## Axis 5 — Verification · 📁 × Static+Behavioral [6 items]
+## Axis 5 — Verification · Project × Static+Behavioral [6 items]
 
 > "How do you trust the output?" — Use criteria, separated perspectives, and independent verifiers to avoid self-deceiving.
 
@@ -91,7 +91,7 @@ All judgments come from the **gap between what is set up and what is actually do
 
 ---
 
-## Axis 6 — Compounding · 👤+📁 × Growth [3 items + 1]
+## Axis 6 — Compounding · User+Project × Growth [3 items + 1]
 
 > "How do you improve?" — Does what's learned in sessions flow back into harness artifacts (SKILL·Docs·CLAUDE.md) and accumulate?
 
