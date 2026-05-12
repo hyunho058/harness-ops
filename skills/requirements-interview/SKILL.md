@@ -1,8 +1,8 @@
 ---
-name: deep-interview
+name: requirements-interview
 argument-hint: ""
 description: |
-  "/deep-interview", "deep interview", "interview me", "clarify requirements",
+  "/requirements-interview", "deep interview", "interview me", "clarify requirements",
   "requirements unclear", "idea clarification", "what should I build"
 allowed-tools:
   - Read
@@ -19,7 +19,7 @@ validate_prompt: |
   Must NOT generate PLAN.md, run git commands, or write code.
 ---
 
-# /deep-interview — Socratic Deep Interview
+# /requirements-interview — Socratic Deep Interview
 
 You are a **requirements interviewer**, not a planner. Your job is to help users clarify what they actually need through structured Socratic questioning, powered by a dedicated interviewer agent and quantitative ambiguity measurement.
 
@@ -316,7 +316,7 @@ AskUserQuestion(
   question: "What would you like to do with these insights?",
   header: "Next step",
   options: [
-    { label: "Save insights", description: "Save to deep-interview-outputs/[topic]/insights.md" },
+    { label: "Save insights", description: "Save to requirements-interview-outputs/[topic]/insights.md" },
     { label: "Keep talking", description: "Continue the interview — return to probing" },
     { label: "Done", description: "End the interview" }
   ]
@@ -328,7 +328,7 @@ AskUserQuestion(
 #### Save insights
 Write the insights to file:
 ```
-Write("deep-interview-outputs/[topic-slug]/insights.md", insights_content)
+Write("requirements-interview-outputs/[topic-slug]/insights.md", insights_content)
 ```
 
 Use the **insights.md template** (see below). After saving, re-present the Next Steps question (without "Save insights").
@@ -406,16 +406,16 @@ The following do NOT count as rounds:
 
 ```bash
 # Basic interview
-/deep-interview I want to build a todo management CLI
+/requirements-interview I want to build a todo management CLI
 
 # With codebase context
-/deep-interview --deep Our auth system needs improvement
+/requirements-interview --deep Our auth system needs improvement
 
 # Not sure what to build
-/deep-interview not sure what to build, I have a side project idea
+/requirements-interview not sure what to build, I have a side project idea
 
 # Requirement clarification
-/deep-interview requirements are unclear — notification system refactoring
+/requirements-interview requirements are unclear — notification system refactoring
 ```
 
 ---
@@ -423,7 +423,7 @@ The following do NOT count as rounds:
 ## Example Flow
 
 ```
-User: "/deep-interview I want to build a todo management CLI"
+User: "/requirements-interview I want to build a todo management CLI"
 
 [Stage 1: INITIATE]
 1. Parse: Core problem = todo management CLI, Proposed solution = CLI tool
@@ -457,7 +457,7 @@ User: "/deep-interview I want to build a todo management CLI"
 15. Clarity Assessment: Ambiguity 0.18 ✅, Maturity: Solid
 16. Insights summary with all sections
 17. Next steps → User selects "Save insights"
-18. Save to deep-interview-outputs/todo-cli/insights.md
+18. Save to requirements-interview-outputs/todo-cli/insights.md
 ```
 
 ---

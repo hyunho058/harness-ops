@@ -1,6 +1,6 @@
 description = "Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording"
 prompt = """
-@{.gemini/skills/doc-drift/SKILL.md}
+@{.gemini/skills/context-audit/SKILL.md}
 
 User arguments: {{args}}
 """

@@ -11,9 +11,9 @@ The art of designing environments where AI agents work well — 7 skills coverin
 | **check-harness** | Diagnose harness maturity via 6-axis / 24-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents. | `/harness-ops:check-harness` |
 | **scaffold** | Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context | `/harness-ops:scaffold` |
 | **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md) | `/harness-ops:specify "goal"` |
-| **deep-interview** | Socratic requirements interview — clarifies ambiguous goals through structured questioning | `/harness-ops:deep-interview "topic"` |
+| **requirements-interview** | Socratic requirements interview — clarifies ambiguous goals through structured questioning | `/harness-ops:requirements-interview "topic"` |
 | **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness-ops:qa [target]` |
-| **doc-drift** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:doc-drift` |
+| **context-audit** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:context-audit` |
 | **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness-ops:agent-orchestrate "task"` |
 | **generate-team** | Design and build an agent team architecture — delegates to the `harness-factory` plugin (must be installed separately) | `/harness-ops:generate-team [description]` |
 
@@ -48,7 +48,7 @@ claude plugin install harness-ops@harness-ops-marketplace
 /harness-ops:scaffold
 
 # Clarify unclear requirements through structured interview
-/harness-ops:deep-interview "I'm not sure what to build"
+/harness-ops:requirements-interview "I'm not sure what to build"
 
 # Turn a goal into a full implementation plan
 /harness-ops:specify "implement user authentication"
@@ -57,7 +57,7 @@ claude plugin install harness-ops@harness-ops-marketplace
 /harness-ops:qa http://localhost:3000
 
 # Check if your context docs are stale or contradictory
-/harness-ops:doc-drift
+/harness-ops:context-audit
 ```
 
 ## Usage with Gemini CLI
@@ -71,8 +71,8 @@ The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads 
 /harness-ops:specify "implement user authentication"
 /harness-ops:qa http://localhost:3000
 /harness-ops:scaffold
-/harness-ops:deep-interview "topic"
-/harness-ops:doc-drift
+/harness-ops:requirements-interview "topic"
+/harness-ops:context-audit
 /harness-ops:agent-orchestrate "task"
 ```
 
@@ -107,17 +107,17 @@ commands/               # Slash commands — one .md per skill
   check-harness.md
   scaffold.md
   specify.md
-  deep-interview.md
-  doc-drift.md
+  requirements-interview.md
+  context-audit.md
   agent-orchestrate.md
   generate-team.md      # Bridge to harness-factory plugin
 skills/                 # Skill implementations
   check-harness/SKILL.md
   scaffold/SKILL.md
   specify/SKILL.md
-  deep-interview/SKILL.md
+  requirements-interview/SKILL.md
   qa/SKILL.md
-  doc-drift/SKILL.md
+  context-audit/SKILL.md
   agent-orchestrate/SKILL.md
 agents/                 # Subagent definitions
   skill-portfolio-analyzer.md

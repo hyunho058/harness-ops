@@ -53,7 +53,7 @@ ls docs/learnings/ 2>/dev/null
 
 # Planning artifact detection (B2 fallback)
 find specs -name spec.md 2>/dev/null | wc -l
-find deep-interview-outputs -name insights.md 2>/dev/null | wc -l
+find requirements-interview-outputs -name insights.md 2>/dev/null | wc -l
 ```
 
 ## Step 2 — Evaluation Criteria
@@ -87,7 +87,7 @@ find deep-interview-outputs -name insights.md 2>/dev/null | wc -l
 - `docs_learnings_exist`: `docs/learnings/` directory exists or has ≥1 files.
 
 ### planning_artifacts_exist
-- `find specs -name spec.md` returns ≥1 file OR `find deep-interview-outputs -name insights.md` returns ≥1 file.
+- `find specs -name spec.md` returns ≥1 file OR `find requirements-interview-outputs -name insights.md` returns ≥1 file.
 - Returns `true` if either condition is met, `false` otherwise.
 
 ### Risk findings

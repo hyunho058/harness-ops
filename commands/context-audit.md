@@ -4,6 +4,6 @@ argument-hint: "[recent [N] | path <glob>]"
 allowed-tools: [Read, Grep, Glob, Bash, Write, Agent]
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/doc-drift/SKILL.md` and follow its instructions exactly.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/context-audit/SKILL.md` and follow its instructions exactly.
 
 User arguments: $ARGUMENTS

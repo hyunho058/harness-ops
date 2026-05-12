@@ -23,9 +23,9 @@ skills/               # Core skill implementations (SKILL.md per skill is the so
   check-harness/      # Harness maturity assessment
   scaffold/           # Greenfield project harness scaffolding
   specify/            # Goal → Implementation plan (spec.md)
-  deep-interview/     # Socratic requirements interview
+  requirements-interview/     # Socratic requirements interview
   qa/                 # QA testing (browser/computer/cli)
-  doc-drift/          # Documentation drift audit
+  context-audit/          # Documentation drift audit
   agent-orchestrate/  # Agent orchestration patterns
 .gemini/
   commands/harness-ops/ # Gemini CLI command definitions

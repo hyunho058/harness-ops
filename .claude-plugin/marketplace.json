@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "harness-ops",
-      "description": "harness plugin — QA, scaffold, specify, check-harness, deep-interview, doc-drift, agent-orchestrate",
+      "description": "harness plugin — QA, scaffold, specify, check-harness, requirements-interview, context-audit, agent-orchestrate",
       "category": "productivity",
       "source": "./plugins/harness-ops"
     }

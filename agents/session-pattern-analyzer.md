@@ -74,7 +74,7 @@ Additionally, collect timestamps (session start/end) and `stop_hook_summary` eve
 | `tool_frequency` | Top 20 counts by name |
 | `skills_invoked` | Count of `Skill.skill` values |
 | `agents_invoked` | Count of `Agent.subagent_type` values |
-| `plan_first_ratio` | Ratio of sessions containing `Skill(specify/scaffold/plan/deep-interview)` or plan mode |
+| `plan_first_ratio` | Ratio of sessions containing `Skill(specify/scaffold/plan/requirements-interview)` or plan mode |
 | `delegation_ratio` | Ratio of sessions with Agent calls ≥ 1 |
 | `parallel_count` | Total count of `Agent.run_in_background == true` |
 | `handoff_ratio` | Ratio of session-wrap/memory-write traces in long sessions (≥`long_session_min` minutes) |

@@ -1,5 +1,5 @@
 ---
-name: doc-drift
+name: context-audit
 argument-hint: ""
 context: fork
 description: |
@@ -14,7 +14,7 @@ description: |
   "outdated docs", "document conflict".
 ---
 
-# doc-drift — Claude memory audit
+# context-audit — Claude memory audit
 
 One sentence: **Scan all memory and documents Claude loads in this project, find anything outdated, contradictory, or risky/ambiguous, and surface them in priority order.**
 
@@ -125,6 +125,6 @@ If chosen: create atomic commits per finding on a `docs/drift-fix-<timestamp>` b
 
 | Input | Behavior |
 |-------|----------|
-| `/doc-drift` | Full audit (default) |
-| `/doc-drift recent` / `recent 50` | Only areas changed in the last N commits |
-| `/doc-drift path <glob>` | Specific paths only |
+| `/context-audit` | Full audit (default) |
+| `/context-audit recent` / `recent 50` | Only areas changed in the last N commits |
+| `/context-audit path <glob>` | Specific paths only |
