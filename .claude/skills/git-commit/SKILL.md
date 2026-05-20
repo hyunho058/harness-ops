@@ -6,151 +6,180 @@ allowed-tools:
   - Bash
   - Write
   - Agent
-  - TaskCreate
-  - TaskUpdate
-  - TeamCreate
-  - TeamDelete
-  - SendMessage
 ---
 
 # Git Commit Orchestrator
 
-Coordinates the git-analyst, git-operator, and git-pr-agent team to execute the full commit-push-PR workflow.
+Coordinates git-analyst → git-operator → git-pr-agent as sequential sub-agents to execute the full commit-push-PR workflow.
 
-## Execution Mode: Agent Team (Pipeline)
+## Execution Mode: Sub-agent (Sequential Pipeline)
+
+```
+Agent(git-analyst)  →  Agent(git-operator)  →  Agent(git-pr-agent)
+        ↓                       ↓                        ↓
+01_analyst_plan.md    02_operator_report.md      03_pr_result.md
+```
 
 ## Agent Composition
 
-| Member | Agent type | Role | Input | Output |
-|--------|------------|------|-------|--------|
-| git-analyst | general-purpose | Analyze diff, write commit plan | git state | `_workspace/01_analyst_plan.md` |
-| git-operator | general-purpose | Branch, rebase, commit, push | analyst plan | `_workspace/02_operator_report.md` |
-| git-pr-agent | general-purpose | Create GitHub PR | analyst plan + operator report | `_workspace/03_pr_result.md` |
+| Step | Agent | Role | Input | Output |
+|------|-------|------|-------|--------|
+| 1 | git-analyst | Analyze diff, write commit plan | git state | `_workspace/01_analyst_plan.md` |
+| 2 | git-operator | Branch, rebase, commit, push | analyst plan | `_workspace/02_operator_report.md` |
+| 3 | git-pr-agent | Create GitHub PR | analyst plan + operator report | `_workspace/03_pr_result.md` |
 
 ## Workflow
 
 ### Phase 0: Context Check
 
-1. Check whether `_workspace/` exists in the project root:
+1. Run `git status --short`. If output is empty, tell the user there is nothing to commit and stop.
+2. Check whether `_workspace/` exists:
    - **Absent** → initial run, proceed to Phase 1
-   - **Present + user requests retry/re-run** → partial re-run: re-invoke only the relevant agent
-   - **Present + fresh "please commit"** → new run: rename `_workspace/` to `_workspace_<timestamp>/`, then proceed to Phase 1
-2. Check git status briefly (`git status --short`) — if clean with nothing to commit, inform the user and stop
+   - **Present + user requests retry/re-run** → partial re-run: skip to the failed step
+   - **Present + fresh "please commit"** → new run: `mv _workspace/ _workspace_<timestamp>/`, then proceed to Phase 1
 
 ### Phase 1: Preparation
 
-1. Create `_workspace/` in the project root (or ensure it exists for partial re-runs)
-2. Note the current branch for reference
+Create `_workspace/` in the project root:
 
-### Phase 2: Team Formation
+```bash
+mkdir -p _workspace
+```
 
-Form the pipeline team:
+### Phase 2: Run git-analyst
+
+Invoke as a sub-agent and wait for it to complete before proceeding:
 
 ```
-TeamCreate(
-  team_name: "git-team",
-  members: [
-    {
-      name: "git-analyst",
-      agent_type: "general-purpose",
-      model: "opus",
-      prompt: "You are the git-analyst agent. Read .claude/agents/git-analyst.md for your full role definition. Your task: analyze the current git state and write _workspace/01_analyst_plan.md. Project root: <CWD>."
-    },
-    {
-      name: "git-operator",
-      agent_type: "general-purpose",
-      model: "opus",
-      prompt: "You are the git-operator agent. Read .claude/agents/git-operator.md for your full role definition. Your task: read _workspace/01_analyst_plan.md and execute the git workflow (branch creation, rebase, commit, push). Project root: <CWD>."
-    },
-    {
-      name: "git-pr-agent",
-      agent_type: "general-purpose",
-      model: "opus",
-      prompt: "You are the git-pr-agent. Read .claude/agents/git-pr-agent.md for your full role definition. Your task: read _workspace/01_analyst_plan.md and _workspace/02_operator_report.md, then create the GitHub PR. Project root: <CWD>."
-    }
-  ]
+Agent(
+  subagent_type: "general-purpose",
+  model: "opus",
+  description: "Git analyst — analyze diff and write commit plan",
+  prompt: "
+    You are the git-analyst agent.
+    Read the full role definition at: <CWD>/.claude/agents/git-analyst.md
+
+    Task: analyze the current git state and write _workspace/01_analyst_plan.md.
+    Project root: <CWD>
+
+    Required output file format:
+      branch_name: feat/short-description
+      commit_message: type(scope): description
+      pr_title: type(scope): description
+      pr_body: |
+        ## Summary
+        - bullet 1
+        - bullet 2
+
+        ## Test plan
+        - [ ] ...
+      status: ready
+
+    If nothing to commit, write: status: nothing_to_commit
+  "
 )
 ```
 
-### Phase 3: Task Assignment
+After the agent returns, read `_workspace/01_analyst_plan.md`. If `status: nothing_to_commit`, inform the user and stop.
 
-Register pipeline tasks with explicit dependencies:
+### Phase 3: Run git-operator
+
+Invoke only after Phase 2 succeeds:
 
 ```
-TaskCreate(tasks: [
-  {
-    title: "Analyze git state and write commit plan",
-    description: "Run git status/diff/log. Write _workspace/01_analyst_plan.md with branch_name, commit_message, pr_title, pr_body, status.",
-    assignee: "git-analyst"
-  },
-  {
-    title: "Execute git workflow (branch, rebase, commit, push)",
-    description: "Read _workspace/01_analyst_plan.md. Create branch if on main, git add ., rebase onto origin/main, commit, push. Write _workspace/02_operator_report.md.",
-    assignee: "git-operator",
-    depends_on: ["Analyze git state and write commit plan"]
-  },
-  {
-    title: "Create GitHub Pull Request",
-    description: "Read _workspace/01_analyst_plan.md and _workspace/02_operator_report.md. Run gh pr create. Write _workspace/03_pr_result.md with PR URL.",
-    assignee: "git-pr-agent",
-    depends_on: ["Execute git workflow (branch, rebase, commit, push)"]
-  }
-])
+Agent(
+  subagent_type: "general-purpose",
+  model: "opus",
+  description: "Git operator — branch, rebase, commit, push",
+  prompt: "
+    You are the git-operator agent.
+    Read the full role definition at: <CWD>/.claude/agents/git-operator.md
+
+    Task: read _workspace/01_analyst_plan.md and execute the git workflow.
+    Project root: <CWD>
+
+    Steps:
+    1. Read _workspace/01_analyst_plan.md
+    2. Check current branch (git rev-parse --abbrev-ref HEAD)
+       - If 'main': git checkout -b <branch_name>
+       - Otherwise: stay on current branch
+    3. git add .
+    4. git fetch origin && git rebase origin/main
+    5. git commit -m '<commit_message>'
+    6. git push -u origin <branch_name>
+
+    Write result to _workspace/02_operator_report.md
+  "
+)
 ```
 
-### Phase 4: Execution and Monitoring
+After the agent returns, read `_workspace/02_operator_report.md`. If `status` is not `success`, skip Phase 4 and jump to Phase 5 with the error.
 
-1. git-analyst starts immediately. Wait for task completion.
-2. Once analyst task completes: git-operator begins. Wait for completion.
-3. Once operator task completes: check `_workspace/02_operator_report.md` status
-   - If `success`: git-pr-agent begins
-   - If any failure status: skip PR creation, jump to Phase 5 (report failure)
-4. Once PR agent task completes: read `_workspace/03_pr_result.md`
+### Phase 4: Run git-pr-agent
 
-### Phase 5: Cleanup and Report
+Invoke only after Phase 3 succeeds:
 
-1. Read the final state files:
-   - `_workspace/01_analyst_plan.md` — commit message and branch name
-   - `_workspace/02_operator_report.md` — commit SHA and push status
-   - `_workspace/03_pr_result.md` — PR URL
-2. TeamDelete("git-team")
-3. Report to the user:
-   - **Success**: branch name, commit SHA, PR URL
-   - **Partial failure**: which step failed and what the error was
-   - **Nothing to commit**: inform and suggest `git add` if files were forgotten
+```
+Agent(
+  subagent_type: "general-purpose",
+  model: "opus",
+  description: "Git PR agent — create GitHub pull request",
+  prompt: "
+    You are the git-pr-agent.
+    Read the full role definition at: <CWD>/.claude/agents/git-pr-agent.md
+
+    Task: create a GitHub PR using the analyst's plan and the operator's result.
+    Project root: <CWD>
+
+    Steps:
+    1. Read _workspace/01_analyst_plan.md (pr_title, pr_body)
+    2. Read _workspace/02_operator_report.md (branch_pushed, status)
+    3. If operator status != 'success': write status: upstream_failed and stop
+    4. Run: gh pr create --title '<pr_title>' --body '<pr_body>' --base main
+    5. Write result to _workspace/03_pr_result.md
+  "
+)
+```
+
+### Phase 5: Report
+
+Read all three workspace files and report to the user:
+
+- **Success**: "Branch `<branch_name>` pushed. Commit: `<sha>`. PR: `<pr_url>`"
+- **Analyst failed**: "Could not determine what to commit. Details: `_workspace/01_analyst_plan.md`"
+- **Operator failed**: describe the specific error (rebase conflict, push rejected, hook failure)
+- **PR failed**: "Push succeeded but PR creation failed. Branch: `<branch_name>`. Error: `<message>`"
 
 ## Error Handling
 
-| Error type | Response |
-|------------|----------|
-| Nothing to commit | Stop after Phase 0, inform user |
-| Rebase conflict | Report conflicting files; suggest manual resolution then re-run |
-| Push rejected | Report rejection reason; do NOT force-push |
-| `gh` not authenticated | Report and suggest `gh auth login` |
-| Pre-commit hook failure | Report hook output; user must fix and re-run |
-
-Retry policy: each agent retries once internally on transient errors, then reports failure.
+| Error | Response |
+|-------|----------|
+| Nothing to commit | Stop at Phase 0 |
+| Rebase conflict | Report files in conflict; suggest manual resolution then re-run |
+| Push rejected | Report rejection reason; never force-push |
+| `gh` not authenticated | Suggest `gh auth login` |
+| Pre-commit hook failure | Show hook output; user must fix and re-run |
 
 ## Partial Re-run Support
 
 When the user says "retry push", "redo PR", or "fix the commit message":
-- Check which step failed from `_workspace/0*` files
-- Re-invoke only that agent (skip earlier steps)
-- Overwrite only the relevant output file
+1. Check which `_workspace/0*` file shows a failure
+2. Re-invoke only that agent (skip earlier steps)
+3. Overwrite only that output file
 
 ## Test Scenarios
 
 ### Happy path
 
 1. User has uncommitted changes on `main`
-2. git-analyst writes plan: `branch_name: feat/add-git-hooks`, `commit_message: feat(hooks): add pre-commit validation`
-3. git-operator creates branch, rebases, commits, pushes
-4. git-pr-agent creates PR, returns URL
-5. Orchestrator reports: "Branch `feat/add-git-hooks` pushed. PR: https://github.com/.../pull/42"
+2. git-analyst → writes `branch_name: feat/add-logging`, `commit_message: feat(logger): add structured logging`
+3. git-operator → creates branch, rebases, commits, pushes
+4. git-pr-agent → creates PR, returns URL
+5. Report: "Branch `feat/add-logging` pushed. Commit: `a1b2c3d`. PR: https://github.com/.../pull/42"
 
 ### Error path: rebase conflict
 
 1. Analyst writes plan successfully
 2. Operator hits conflict during `git rebase origin/main`
-3. Operator writes `status: rebase_conflict` with file list
-4. Orchestrator skips PR creation, reports: "Rebase conflict in `src/foo.ts`. Resolve conflicts and run 'please commit' again."
+3. Operator writes `status: rebase_conflict`
+4. Phase 4 skipped; report: "Rebase conflict in `src/foo.ts`. Resolve manually then run 'please commit' again."
