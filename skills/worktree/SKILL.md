@@ -1,0 +1,164 @@
+---
+name: worktree
+argument-hint: "[create <branch> | list | remove <path>]"
+description: |
+  Create, list, and remove git worktrees so you can run a separate, independent
+  Claude Code session on a different branch without touching the work in your
+  current session. Prepares an isolated sibling working directory, auto-copies
+  untracked local config (.env, .claude/settings.local.json), and hands you the
+  exact command to open a new session there.
+  Use when: "/worktree", "worktree", "worktree 만들어", "worktree 목록",
+  "worktree 정리", "새 작업공간", "병렬 세션", "새 브랜치로 따로 작업",
+  "parallel session", "isolated workspace", "separate session", "new workspace".
+  Do NOT trigger for: questions about the Agent `isolation: "worktree"` option
+  (that is a temporary in-session agent worktree, a different thing), or general
+  git branch questions that do not involve a separate working directory.
+allowed-tools:
+  - Read
+  - Glob
+  - Bash
+  - AskUserQuestion
+---
+
+# /worktree — Isolated Parallel Session Workspaces
+
+Manage `git worktree` directories whose purpose is to let the user run a **second,
+fully independent Claude Code session** on another branch — with zero interference
+with the files or uncommitted changes in the current session.
+
+A worktree shares the repo's `.git` (commits, branches, objects) but has its **own
+working directory**. So two sessions in two worktrees cannot touch each other's files.
+
+---
+
+## Important Constraints (read before acting)
+
+1. **A skill cannot launch a terminal session.** This skill prepares everything up
+   to the moment of launch, then prints the exact `cd … && claude` command for the
+   user to run in a **new terminal**. Never claim to have "opened a new session."
+2. **A branch can be checked out in only one worktree at a time.** Always create a
+   **new** branch with `-b` for a fresh workspace, unless the user names an existing
+   branch that is not checked out anywhere.
+3. **Worktrees are NOT auto-deleted.** They persist on disk until `git worktree
+   remove`. That is why the `remove` subcommand exists.
+4. **Only `.git`-tracked content is checked out.** Gitignored config (`.env`, local
+   settings) does not follow automatically — this skill copies a safe allowlist.
+
+---
+
+## Argument Parsing
+
+Inspect the invocation argument and route to a subcommand:
+
+| Argument starts with | Subcommand |
+|----------------------|------------|
+| `list`, `ls`, `목록` | **List** |
+| `remove`, `rm`, `정리`, `삭제` | **Remove** |
+| anything else (incl. a branch name) | **Create** (rest = branch name) |
+| empty | Ask the user which action (create / list / remove) via AskUserQuestion |
+
+---
+
+## Subcommand: Create
+
+### 1. Gather inputs
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+REPO=$(basename "$ROOT")
+```
+- **Branch name**: from the argument if given. If absent, ask the user for a branch
+  name via AskUserQuestion (do not invent one silently).
+- **Slug**: sanitize the branch name for a filesystem path — replace `/` and spaces
+  with `-` (e.g. `feature/foo bar` → `feature-foo-bar`).
+- **Target path**: sibling of the repo → `../<REPO>-<slug>`.
+
+### 2. Safety checks (stop with a clear message if any fail)
+- Target path must not already exist.
+- If the branch already exists, verify it is **not** checked out in another worktree
+  (`git worktree list`). If it is, stop and explain.
+
+### 3. Create the worktree
+- New branch (default):
+  ```bash
+  git worktree add "../<REPO>-<slug>" -b "<branch>"
+  ```
+- Existing, non-checked-out branch (omit `-b`):
+  ```bash
+  git worktree add "../<REPO>-<slug>" "<branch>"
+  ```
+
+### 4. Auto-copy untracked local config
+Copy each of these from `$ROOT` into the new worktree **if it exists**, preserving
+the relative path. This is a fixed allowlist — never copy `node_modules`, build
+output, or arbitrary ignored files.
+```
+.env
+.env.local
+.env.development
+.env.production
+.claude/settings.local.json
+```
+For each that exists, create the parent dir in the target and copy it. Report which
+files were copied (and that they are gitignored, so they will never be committed and
+will disappear when the worktree is removed).
+
+### 5. Hand off
+Print, clearly, the command for the user to run in a **new terminal**:
+```bash
+cd ../<REPO>-<slug> && claude
+```
+Remind them: this new session is fully isolated; the current session's branch and
+uncommitted changes are untouched.
+
+---
+
+## Subcommand: List
+
+```bash
+git worktree list
+```
+Present the result as a readable table (path, branch, HEAD). Mark which entry is the
+**current** worktree (`$ROOT`).
+
+---
+
+## Subcommand: Remove
+
+### 1. Resolve target
+- From the argument (a path or branch). If ambiguous or missing, show
+  `git worktree list` and ask the user which one via AskUserQuestion.
+- Never remove the **current** worktree (`$ROOT`). Refuse and explain.
+
+### 2. Safety: check for uncommitted work
+```bash
+git -C "<path>" status --porcelain
+```
+- **Clean** → proceed.
+- **Dirty** → list the changes and ask for explicit confirmation via AskUserQuestion
+  ("Discard uncommitted changes in this worktree?"). Only on confirmation use
+  `--force`.
+
+### 3. Remove and prune
+```bash
+git worktree remove "<path>"        # add --force only if confirmed dirty
+git worktree prune
+```
+
+### 4. Offer branch cleanup
+Ask whether to also delete the branch that worktree was on (`git branch -d <branch>`,
+or `-D` if unmerged and confirmed). Do not delete branches without asking.
+
+---
+
+## Rules
+
+1. **Never claim to have started a new session** — only the user can run `claude` in
+   the new terminal. Always end Create by printing the launch command.
+2. **Always `-b` for new workspaces** — avoid the "branch already checked out" error.
+3. **Config copy is a fixed allowlist** — never copy `node_modules` or unknown
+   ignored files; report exactly what was copied.
+4. **Removal is guarded** — check for uncommitted changes first; `--force` only after
+   explicit confirmation; never remove the current worktree.
+5. **Branches are never deleted silently** — always ask.
+6. **Keep output tight** — the user wants the worktree ready and the launch command,
+   not an essay.
