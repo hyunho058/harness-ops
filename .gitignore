@@ -40,3 +40,6 @@ temp/
 
 # Specs (local planning documents)
 specs/
+
+# Local workspace / agent working files (incl. timestamped backups)
+_workspace*/
