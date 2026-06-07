@@ -1,6 +1,6 @@
 ---
-description: Create / list / remove git worktrees for independent parallel Claude Code sessions
-argument-hint: "[create <branch> | list | remove <path>]"
+description: Create / list / attach / remove git worktrees (with tmux sessions) for independent parallel Claude Code sessions
+argument-hint: "[create <branch> | list | attach <name> | remove <path>]"
 allowed-tools: [Read, Glob, Bash, AskUserQuestion]
 ---
 
