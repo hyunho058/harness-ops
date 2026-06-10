@@ -2,7 +2,7 @@
 
 A Claude Code plugin for **Harness Engineering**.
 
-The art of designing environments where AI agents work well — 8 skills covering the full harness lifecycle: diagnose, plan, build, test, and maintain.
+The art of designing environments where AI agents work well — 9 skills covering the full harness lifecycle: diagnose, plan, build, test, and maintain.
 
 ## Skills
 
@@ -15,6 +15,7 @@ The art of designing environments where AI agents work well — 8 skills coverin
 | **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness-ops:qa [target]` |
 | **context-audit** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:context-audit` |
 | **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness-ops:agent-orchestrate "task"` |
+| **loop** | Run a task as a supervised verification loop — establishes a 3-gate contract (Pass/Fail · Quantitative · Qualitative), iterates Work→Verify→Fix until gates pass, emits an evidence report, and escalates at autonomy boundaries (schema / migration / auth / payment / spec conflict) | `/harness-ops:loop "task"` |
 | **worktree** | Create / list / remove isolated git worktrees so you can run independent parallel Claude Code sessions on separate branches without interference | `/harness-ops:worktree [create\|list\|remove]` |
 | **generate-team** | Design and build an agent team architecture — delegates to the `harness-factory` plugin (must be installed separately) | `/harness-ops:generate-team [description]` |
 
@@ -75,6 +76,7 @@ The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads 
 /harness-ops:requirements-interview "topic"
 /harness-ops:context-audit
 /harness-ops:agent-orchestrate "task"
+/harness-ops:loop "task"
 /harness-ops:worktree create feature/new-task
 ```
 
@@ -85,7 +87,7 @@ The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads 
 ln -s /path/to/harness-ops/.gemini/commands/harness-ops ~/.gemini/commands/harness-ops
 ```
 
-After linking, open any Gemini CLI session and type `/harness-ops` to see all 8 skills.
+After linking, open any Gemini CLI session and type `/harness-ops` to see all 9 skills.
 
 ### How it works
 
@@ -122,6 +124,7 @@ skills/                 # Skill implementations
   qa/SKILL.md
   context-audit/SKILL.md
   agent-orchestrate/SKILL.md
+  loop/SKILL.md
   worktree/SKILL.md
 agents/                 # Subagent definitions
   skill-portfolio-analyzer.md
