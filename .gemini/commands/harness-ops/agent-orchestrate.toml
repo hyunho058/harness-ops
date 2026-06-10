@@ -43,7 +43,7 @@ Analyze the user's task, recommend the best orchestration pattern, and execute i
 | **Sequential Pipeline** | Steps depend on each other (A->B->C) | TaskCreate -> execute one by one | Blog writing, migration, ordered workflows |
 | **Parallel Subagent** | N independent tasks, results merged | Agent x N spawn -> main collects | Competitor analysis, multi-file review, bulk processing |
 | **Team Mode** | Roles need inter-agent communication | TeamCreate -> agents talk directly | Design+implement+review, complex features |
-| **Ralph Loop** | Clear done-criteria, iterative refinement | Activate /ralph skill with DoD | Bug fixing to spec, quality gates, polish tasks |
+| **Ralph Loop** | Clear done-criteria, iterative refinement | Activate `harness-ops:loop` with a gate contract | Bug fixing to spec, quality gates, polish tasks |
 
 ---
 
@@ -188,19 +188,20 @@ options:
 
 ### Pattern D: Ralph Loop
 
-**Do NOT reimplement ralph.** Activate the existing skill.
+**Do NOT reimplement the loop.** Activate the `harness-ops:loop` skill, which owns the gate contract + verification machinery.
 
 ```
-1. Formulate the task as a ralph-compatible request:
+1. Formulate the task as a loop request:
    - Clear goal statement
-   - Implicit or explicit done-criteria the user provided
-2. Invoke: Skill(skill="ralph", args="{task description with context}")
-3. Ralph handles the rest:
-   - Phase 1: DoD proposal + user confirmation
-   - Phase 2: Work + Stop hook verification loop
+   - Any done-criteria / thresholds the user provided
+2. Invoke: Skill(skill="harness-ops:loop", args="{task description with context}")
+3. The loop skill handles the rest:
+   - Phase 0: gate contract (loop.md) proposal + user confirmation
+   - Phase 1-3: Work -> Verify (3 gates) -> Fix, until gates pass or a boundary escalates
+   - Phase 4: evidence report
 ```
 
-**Key rule**: Pass through all relevant context (file paths, requirements, constraints) in the args so ralph has full picture. Do not pre-define DoD — let ralph propose it.
+**Key rule**: Pass through all relevant context (file paths, requirements, constraints) in the args so the loop has the full picture. Do not pre-define the gates — let the loop skill propose the contract.
 
 ---
 
@@ -221,7 +222,7 @@ After execution completes (regardless of pattern), output a brief summary:
 ## Rules
 
 1. **Always ask before executing** — never skip Phase 2 confirmation
-2. **Ralph is a skill call, not a reimplementation** — use `Skill(skill="ralph")`
+2. **Ralph Loop is a skill call, not a reimplementation** — use `Skill(skill="harness-ops:loop")`
 3. **Parallel agents in one message** — don't spawn sequentially
 4. **Match pattern to situation** — don't force a pattern; if the task is trivial, sequential is fine
 5. **Pass context forward** — each step/agent needs enough context to work independently

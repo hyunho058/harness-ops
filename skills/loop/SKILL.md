@@ -1,0 +1,191 @@
+---
+name: loop
+argument-hint: "[task or goal]"
+description: |
+  Run a task as a supervised verification loop instead of a one-shot prompt.
+  Establishes a loop contract (3 gates: Pass/Fail, Quantitative, Qualitative),
+  then iterates Work → Verify → Fix until every gate passes — emitting an
+  objective evidence report before declaring done. Stops and escalates to a
+  human when an autonomy boundary is crossed (schema change, data-loss
+  migration, auth/payment/security, or a change that conflicts with the spec).
+  Implements the "Ralph loop" technique — the iterative-refinement pattern that
+  agent-orchestrate selects as its Loop pattern.
+  Use when: "/loop", "loop", "run until it passes", "iterate until tests pass",
+  "supervise this until done", "loop.md", "verification loop", "ralph loop",
+  "don't stop until the gates pass", "keep going until criteria met".
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - Write
+  - Edit
+  - AskUserQuestion
+---
+
+# /loop — Supervised Verification Loop
+
+Run a task as a **loop**, not a prompt.
+
+A prompt says "do X" once and trusts the reply. A loop says "do X, then prove it
+passes the gates; if it doesn't, fix it and re-verify — repeat until the gates
+pass or you hit a boundary that requires a human." You stop being the remote
+control issuing "fix this / change that" and become the **supervisor** who
+defined what "done" means up front.
+
+The model marks its own homework generously, so this skill never trusts a bare
+"done." It forces an **evidence report** — gate results, numbers, and, for every
+subjective judgement, a score *plus objective grounds plus a corrective action*.
+
+---
+
+## The Loop Contract (`loop.md`)
+
+Every loop runs against a contract with three gate types. Before any work
+starts, this contract must exist and be approved.
+
+| Gate | Question | Rule |
+|------|----------|------|
+| **1. Pass/Fail** | Does it build / typecheck / lint / test? | **100% required.** Binary. One failure = not done. |
+| **2. Quantitative** | Do the numbers clear the thresholds? | Each metric has a stated threshold. Below threshold = not done. |
+| **3. Qualitative** | Is the design/flow actually good? | Score **+ objective grounds + corrective action**. A bare high score is rejected. |
+
+### Gate 1 — Pass/Fail (binary, 100%)
+Concrete commands whose exit code decides the gate. Typical members:
+build succeeds, type check clean, linter clean, test suite green.
+If a command does not exist for this project, say so — do not silently skip it.
+
+### Gate 2 — Quantitative (numbers vs thresholds)
+Measured values, each with a threshold agreed in the contract. Examples:
+test coverage ≥ N%, p95 latency ≤ N ms, error-log rate ≤ N, bundle size ≤ N.
+Report the measured number next to its threshold every iteration.
+
+### Gate 3 — Qualitative (judged, with evidence)
+Things that need judgement: architecture fit, naming clarity, naturalness of the
+user flow, spec alignment. **The model inflates its own scores**, so each
+qualitative item MUST be written as:
+
+```
+<item>: <score>/10
+  grounds: <specific, checkable observation — file/line, a measured fact, a comparison>
+  action: <the concrete change that would raise it, or "none — meets bar"
+           and why no change is needed>
+```
+
+A score with no grounds and no action is invalid and the gate fails.
+
+---
+
+## Autonomy Boundary
+
+Inside the loop the model fixes things on its own. But unbounded autonomy lets it
+"improve" its way into wrecking the design or doing something irreversible. So the
+loop has a hard fence.
+
+### ✅ Auto-fix (stay in the loop, no asking)
+- Lint / formatting / type errors
+- Adding missing tests for code already in scope
+- Documentation and comment updates
+- Local renames / naming clean-ups
+- Refactors with no behaviour change that keep all Gate-1 commands green
+
+### 🛑 STOP and call the human (escalate, do not proceed)
+- **Database schema changes**
+- **Migrations that can lose data** (drops, destructive backfills, irreversible transforms)
+- **Auth / permission / access-control policy changes**
+- **Payment or security-sensitive changes** (secrets, crypto, billing)
+- **Anything that conflicts with the approved spec / PRD / original intent**
+- Deleting or overwriting work you did not create, when what you find contradicts the task
+
+When a boundary is hit: stop the loop, write what you found, why it crossed the
+fence, and the options — then ask via AskUserQuestion. Never push through it.
+
+---
+
+## Phase 0 — Establish the Contract
+
+1. **Find or build `loop.md`.** Look for an existing `loop.md` (repo root, the
+   spec/feature dir, or a path the user named). If one exists, read it and use
+   its gates. If not, derive a draft from the task + project:
+   - Detect Gate-1 commands from the project (e.g. `package.json` scripts,
+     `Makefile`, `pyproject.toml`, CI config). Use `references/loop-template.md`
+     as the skeleton.
+   - Propose Gate-2 thresholds and Gate-3 items relevant to the task.
+2. **Get approval.** Present the drafted contract and confirm via
+   AskUserQuestion before running the loop. The user owns the bar; you don't get
+   to lower it later. Write the approved contract to `loop.md`.
+
+If the task is trivial and the user just wants it run, you may present a minimal
+contract (Gate 1 only) and proceed on approval — but always state the gates.
+
+---
+
+## Phase 1 → 3 — The Loop
+
+Repeat until **exit** (all gates pass) or **escalate** (boundary hit):
+
+```
+Phase 1  WORK
+  Do the next increment of the task.
+  Stay strictly inside the Auto-fix list. The moment the work requires
+  something on the STOP list → jump to ESCALATE.
+
+Phase 2  VERIFY  (run the gates, top to bottom)
+  Gate 1: run each Pass/Fail command, record exit status.
+  Gate 2: measure each metric, record value vs threshold.
+  Gate 3: score each item with grounds + action.
+
+Phase 3  DECIDE
+  IF every gate passes        → EXIT  → emit Evidence Report (done)
+  ELIF the fix is Auto-fix    → apply it, loop back to Phase 1
+  ELIF boundary hit           → ESCALATE (stop, ask the human)
+  ELSE (can't fix within bounds, or no progress two iterations running)
+                              → ESCALATE with the blocker
+```
+
+**Anti-spin rule:** if an iteration makes no gate go from fail→pass, do not loop
+again blindly — report the stuck gate and escalate. Loops fix; they don't thrash.
+
+---
+
+## Phase 4 — Evidence Report
+
+A loop never ends with "done." It ends with proof. Emit:
+
+```markdown
+## Loop Report — <task>
+
+**Verdict:** ✅ all gates passed  |  🛑 escalated: <reason>
+**Iterations:** <n>
+
+### Gate 1 — Pass/Fail
+- build: ✅ / ❌   (command)
+- typecheck: ✅ / ❌
+- lint: ✅ / ❌
+- tests: ✅ / ❌  (<passed>/<total>)
+
+### Gate 2 — Quantitative
+| metric | measured | threshold | ok? |
+|--------|----------|-----------|-----|
+| ...    | ...      | ...       | ✅/❌ |
+
+### Gate 3 — Qualitative
+- <item>: <score>/10 — grounds: <...> — action: <... | none>
+
+### Boundary log
+- <any STOP-list item encountered and how it was handled>
+```
+
+If escalating, the report ends at the boundary with the question for the human —
+do not fabricate passing gates to close the loop.
+
+---
+
+## Rules
+
+1. **Contract before work** — no loop without approved gates. Never lower the bar mid-loop.
+2. **No bare "done"** — every exit carries an evidence report with numbers and grounds.
+3. **Qualitative needs grounds + action** — a lone score fails the gate.
+4. **The fence is hard** — STOP-list items escalate to a human, always. No exceptions to "just this once."
+5. **Loops fix, not thrash** — no fail→pass progress means escalate, not re-run.
+6. **`loop.md` is the source of truth** — persist the approved contract so the loop is resumable and auditable.
