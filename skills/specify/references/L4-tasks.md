@@ -207,13 +207,18 @@ Skill(
         ordering. Select the execution pattern from this structure (a wide DAG of
         independent slices -> Parallel Subagent; a linear chain -> Sequential
         Pipeline; a focused task needing iterative refinement to a gate -> Loop)
-        and confirm with me before running."
+        and confirm with me before running. After execution completes, run your
+        post-execution verification gate against this spec via the
+        harness-ops:loop skill, verifying the implementation against the spec's
+        ## Requirements — the spec deliberately has no separate final-verify
+        task because holistic verification is handled in the execute pipeline."
 )
 ```
 
 agent-orchestrate then runs its own pattern proposal + confirmation (its Phase 2),
 so the user still approves *how* the work executes — specify does not bypass that
-gate. Do not write task code here; the handoff owns execution.
+gate. Do not write task code here; the handoff owns execution — including the
+post-execution verification gate, which is why L4 emits no final-verify task.
 
 If the user is on `main` or the surface otherwise lacks the `Skill` tool, fall back
 to telling them to run `/harness-ops:agent-orchestrate` with the spec path.
