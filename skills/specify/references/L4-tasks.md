@@ -179,7 +179,7 @@ Post-work
 AskUserQuestion(
   question: "Review the plan above.",
   options: [
-    { label: "Execute", description: "Start implementation" },
+    { label: "Execute", description: "Start implementation via agent-orchestrate" },
     { label: "Revise requirements (L3)", description: "Go back to L3" },
     { label: "Revise tasks (L4)", description: "Adjust task breakdown" },
     { label: "Abort", description: "Stop" }
@@ -187,4 +187,33 @@ AskUserQuestion(
 )
 ```
 
-On approval, write `Approved by: user` and `Approved at: {date}` to spec.md Meta section.
+- **Execute** → write `Approved by: user` and `Approved at: {date}` to spec.md Meta section, then **hand off to execution** (below).
+- **Revise requirements (L3)** / **Revise tasks (L4)** → loop back to the named layer.
+- **Abort** → stop.
+
+### Handoff to Execution (on Execute)
+
+The spec is the *what* and the *order*; agent-orchestrate is the *how*. The Tasks
+DAG already encodes the signals orchestrate needs to pick a pattern — step count,
+dependencies, and which slices are parallel — so pass the spec straight through
+instead of re-deriving it.
+
+```
+Skill(
+  skill="harness-ops:agent-orchestrate",
+  args="Implement the approved plan in {specDir}/spec.md.
+        The ## Tasks section is a dependency DAG: tasks annotated 'parallel with'
+        have no shared interface and may run concurrently; 'Depends on' enforces
+        ordering. Select the execution pattern from this structure (a wide DAG of
+        independent slices -> Parallel Subagent; a linear chain -> Sequential
+        Pipeline; a focused task needing iterative refinement to a gate -> Loop)
+        and confirm with me before running."
+)
+```
+
+agent-orchestrate then runs its own pattern proposal + confirmation (its Phase 2),
+so the user still approves *how* the work executes — specify does not bypass that
+gate. Do not write task code here; the handoff owns execution.
+
+If the user is on `main` or the surface otherwise lacks the `Skill` tool, fall back
+to telling them to run `/harness-ops:agent-orchestrate` with the spec path.

@@ -17,6 +17,7 @@ allowed-tools:
   - Bash
   - Write
   - AskUserQuestion
+  - Skill
 ---
 
 # /specify — Spec Generator
@@ -93,6 +94,12 @@ AskUserQuestion(
 - **Approve** → advance to next layer
 - **Revise** → user provides corrections, update spec.md sections, re-present (loop until approved)
 - **Abort** → stop
+
+At the **final gate (L4)** the "Approve" option is "Execute". On Execute, specify
+records approval and then hands the approved plan off to execution via
+`Skill(skill="harness-ops:agent-orchestrate")` — see `references/L4-tasks.md`.
+specify never writes task code itself; it produces the plan and delegates the
+*how* to agent-orchestrate, which still confirms the execution pattern with the user.
 
 ---
 
