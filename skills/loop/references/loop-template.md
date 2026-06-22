@@ -65,3 +65,23 @@ docs/comments, local renames, behaviour-preserving refactors.
 ## Exit criteria
 The loop exits only when **every** gate above passes and the Evidence Report is
 emitted. Hitting a 🛑 boundary ends the loop in escalation, not completion.
+
+---
+
+## Lessons  (self-learning — carried across runs of THIS contract)
+
+> Each lesson is a mistake this loop already made, hardened so it can't recur.
+> Phase 0 loads `status: active` lessons: `gate1-command` / `gate3-item` forms are
+> folded into the gates above; `context` forms are read as guidance. Lessons are
+> scoped to THIS `loop.md` — they do not propagate to other contracts. The human
+> owns this section (curation); see SKILL.md "Self-Learning Lessons" + Phase 5.
+
+<!-- Append entries below. A fresh contract has none. -->
+
+### L1 — <short title>
+- cause: escalation | gate-fail
+- source: human-approved | auto-unattended
+- form: gate1-command | gate3-item | context
+- status: active | needs-review | retired
+- check: <hardened Gate-1 command, or Gate-3 item text, or "—" for context>
+- note: <what went wrong, and what this prevents — one line>
