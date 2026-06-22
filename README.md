@@ -15,7 +15,7 @@ The art of designing environments where AI agents work well — 9 skills coverin
 | **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness-ops:qa [target]` |
 | **context-audit** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:context-audit` |
 | **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness-ops:agent-orchestrate "task"` |
-| **loop** | Run a task as a supervised verification loop — establishes a 3-gate contract (Pass/Fail · Quantitative · Qualitative), iterates Work→Verify→Fix until gates pass, emits an evidence report, and escalates at autonomy boundaries (schema / migration / auth / payment / spec conflict) | `/harness-ops:loop "task"` |
+| **loop** | Run a task as a supervised verification loop — establishes a 3-gate contract (Pass/Fail · Quantitative · Qualitative), iterates Work→Verify→Fix until gates pass, emits an evidence report, and escalates at autonomy boundaries (schema / migration / auth / payment / spec conflict). **Compounds across runs**: self-learning `## Lessons` (reloaded each run, recorded on failure), maker≠checker Gate 3 (a separate subagent scores the qualitative gate), and an opt-in scheduled heartbeat | `/harness-ops:loop "task"` |
 | **worktree** | Create / list / remove isolated git worktrees so you can run independent parallel Claude Code sessions on separate branches without interference | `/harness-ops:worktree [create\|list\|remove]` |
 | **generate-team** | Design and build an agent team architecture — delegates to the `harness-factory` plugin (must be installed separately) | `/harness-ops:generate-team [description]` |
 
@@ -61,6 +61,25 @@ claude plugin install harness-ops@harness-ops-marketplace
 # Check if your context docs are stale or contradictory
 /harness-ops:context-audit
 ```
+
+## The Loop: compounding verification
+
+`loop` (and the Ralph-Loop pattern in `agent-orchestrate`) goes beyond a one-shot "fix until green." Three additions make the loop improve over time while keeping the existing 3-gate contract, autonomy fence, and evidence report intact:
+
+- **Self-learning lessons** — when a run escalates or a gate fails, the cause is recorded (with your approval) into a `## Lessons` section of that run's `loop.md`. On the next run of the *same* contract, Phase 0 reloads those lessons and folds them back into the gates — so a past mistake becomes a permanent check. Hardened to a deterministic check (Gate-1 command / Gate-3 item) where possible, else carried as context. Lessons are scoped to their `loop.md` (no cross-contract propagation by design).
+- **maker ≠ checker** — the deterministic gates (build / test / metrics) still run inline, but the qualitative Gate 3 is scored by a *separate* checker subagent that never sees the author's reasoning, so a run can't inflate its own score. Falls back to a clearly-flagged `unverified` when no subagent tool is available.
+- **Opt-in automation (heartbeat)** — schedule an approved contract to re-run unattended:
+
+  ```
+  /loop <interval> /harness-ops:loop <task|spec path> mode: unattended
+  ```
+
+  The `mode: unattended` marker is what flips the loop into headless behavior — without it, a self-paced re-run still behaves interactively (you approve lessons, you get asked at the fence). In unattended mode:
+
+  - **Escalation surfacing + fallback** — at the autonomy fence (or when an iteration makes no `fail→pass` progress), the tick stops and notifies you via `PushNotification`. If `PushNotification` isn't available in the environment, the escalation reason is appended to `<specDir>/loop-escalation.md` for you to find next session. Either way the tick stops there — it **never pushes through the fence and never auto-merges** (the merge stays with you, and `block-main-push` is not bypassed).
+  - **Unattended lessons** — with no human present to approve, candidate lessons are auto-appended to `## Lessons` tagged `source: auto-unattended` (rather than `human-approved`), so the loop still compounds while running headless. The tag lets you review or prune them in a later interactive session, keeping you the curation owner.
+
+All three are additive and opt-in: a `loop.md` with no `## Lessons` and an invocation with no `mode: unattended` marker behaves exactly as before. The one always-on change is that Gate 3 is now checker-scored when a subagent tool is available.
 
 ## Usage with Gemini CLI
 
