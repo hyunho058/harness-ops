@@ -2,178 +2,216 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Harness Maturity Report — {{PROJECT_NAME}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --panel-2: #1f2430;
-    --line: #2a2f3a;
-    --fg: #e6e9ef;
-    --muted: #8a94a7;
-    --accent: #7aa2ff;
-    --pass: #58d68d;
-    --weak: #f4d36b;
-    --fail: #ef6e7a;
+    /* Status palette — kept in sync with the C-block node/axis color emitter (oklch, per D6) */
+    --green: oklch(0.78 0.12 155);
+    --amber: oklch(0.82 0.12 82);
+    --coral: oklch(0.70 0.15 22);
+    --accent: oklch(0.74 0.12 262);
     --na: #6b7280;
-  }
-  @media (prefers-color-scheme: light) {
-    :root { --bg:#fafbfc; --panel:#fff; --panel-2:#f4f6fa; --line:#e4e8ef; --fg:#1a1f2b; --muted:#5b6472; --accent:#2f5bf0; --pass:#1e8c52; --weak:#a07800; --fail:#c0303d; }
+    /* Surfaces */
+    --bg: #0b0d12;
+    --panel: #13161e;
+    --panel-2: #1a1e28;
+    --line: #272c38;
+    --line-2: #232834;
+    --inset: #0f1218;
+    --fg: #e9ecf3;
+    --fg-2: #cfd5e2;
+    --fg-3: #aab2c2;
+    --muted: #8a93a6;
+    --muted-2: #6b7280;
+    /* Fonts — CDN faces first, system fallback so the report still reads cleanly offline (D3) */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+    --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; }
-  main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
-  header.top { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom: 24px; }
-  header.top h1 { font-size: 22px; margin:0; letter-spacing:-0.01em; }
-  header.top .meta { color:var(--muted); font-size:13px; font-variant-numeric: tabular-nums; }
-  .hero { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border:1px solid var(--line); border-radius:16px; padding:28px; margin-bottom:24px; }
-  .hero .score-row { display:grid; grid-template-columns: auto 1fr; gap:24px; align-items:center; }
-  .score-bar-widget { width:160px; display:flex; flex-direction:column; gap:6px; }
-  .score-bar-widget .num { font-size:52px; font-weight:700; letter-spacing:-0.03em; line-height:1; }
-  .score-bar-widget .grade { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
-  .score-bar-widget .track { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:4px; }
-  .score-bar-widget .track > span { display:block; height:100%; background:var(--accent); border-radius:4px; }
-  .hero h2 { font-size: 18px; margin:0 0 8px; }
-  .hero p.headline { font-size:16px; line-height:1.5; margin:0 0 16px; }
-  .hero .sub-scores { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-top:12px; }
-  .sub-score { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
-  .sub-score .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
-  .sub-score .val { font-size:22px; font-weight:600; margin-top:4px; }
-  .sub-score .bar { height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:8px; }
-  .sub-score .bar > span { display:block; height:100%; background:var(--accent); }
-  .strength-weak { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
-  .strength-weak div { padding:12px; border-radius:10px; border:1px solid var(--line); }
-  .strength-weak .s { background: rgba(88, 214, 141, 0.08); border-color: rgba(88, 214, 141, 0.4); }
-  .strength-weak .w { background: rgba(239, 110, 122, 0.08); border-color: rgba(239, 110, 122, 0.4); }
-  .strength-weak .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px; }
-  section.cycle { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px 24px; margin-bottom:24px; }
-  section.cycle h2 { font-size:16px; margin:0 0 12px; }
-  section.cycle ol { padding-left: 22px; margin:0; }
-  section.cycle li { padding: 4px 0; color:var(--fg); }
-  section.cycle li .tag { color:var(--muted); font-size:12px; margin-right:6px; }
-  .axes { display:grid; grid-template-columns: repeat(2, 1fr); gap:16px; }
-  @media (max-width: 720px) { .axes { grid-template-columns:1fr; } .hero .score-row { grid-template-columns:1fr; } .hero .sub-scores { grid-template-columns:1fr; } }
-  article.axis { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; }
-  article.axis[data-status="fail"] { border-left: 4px solid var(--fail); }
-  article.axis[data-status="weak"] { border-left: 4px solid var(--weak); }
-  article.axis[data-status="pass"] { border-left: 4px solid var(--pass); }
-  article.axis[data-status="na"]   { border-left: 4px solid var(--na); }
-  article.axis header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
-  article.axis h3 { margin:0; font-size:15px; }
-  article.axis .score { display:flex; align-items:center; gap:8px; font-variant-numeric: tabular-nums; }
-  article.axis .score-num { font-size:18px; font-weight:700; }
-  article.axis .bar { width:70px; height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
-  article.axis .bar > span { display:block; height:100%; background:var(--accent); }
-  article.axis .level { color:var(--muted); font-size:12px; }
-  article.axis p.axis-headline { margin:0; color:var(--fg); font-size:14px; line-height:1.5; }
-  article.axis details { background:var(--panel-2); border-radius:8px; padding:10px 12px; border:1px solid var(--line); }
-  article.axis details summary { cursor:pointer; font-size:13px; color:var(--muted); }
-  article.axis details[open] summary { margin-bottom:8px; color:var(--fg); }
-  article.axis table { width:100%; border-collapse: collapse; font-size:12.5px; }
-  article.axis th, article.axis td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-  article.axis th { color:var(--muted); font-weight:500; }
-  article.axis td .st { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; }
-  article.axis td .st.pass { background: rgba(88, 214, 141, 0.18); color: var(--pass); }
-  article.axis td .st.weak { background: rgba(244, 211, 107, 0.18); color: var(--weak); }
-  article.axis td .st.fail { background: rgba(239, 110, 122, 0.18); color: var(--fail); }
-  article.axis td .st.na   { background: rgba(107, 114, 128, 0.18); color: var(--na); }
-  article.axis .next-move { margin:0; font-size:13px; color:var(--accent); }
-  section.actions { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px 24px; margin-top:24px; }
-  section.actions h2 { font-size:16px; margin:0 0 12px; }
-  .action-buckets { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; }
-  @media (max-width: 900px) { .action-buckets { grid-template-columns:1fr; } }
-  .bucket { background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
-  .bucket h4 { margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); }
-  .bucket.green h4 { color: var(--pass); }
-  .bucket.yellow h4 { color: var(--weak); }
-  .bucket.red h4 { color: var(--fail); }
-  .bucket ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
-  .bucket li { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:13.5px; }
-  .bucket li .title { font-weight:600; }
-  .bucket li .why { color:var(--muted); font-size:12px; margin-top:4px; }
-  .bucket li code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size:12px; background:var(--panel-2); padding:1px 5px; border-radius:4px; display:inline-block; margin-top:4px; }
-  section.extra { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:24px; }
-  @media (max-width: 900px) { section.extra { grid-template-columns:1fr; } }
-  section.extra > div { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
-  section.extra h3 { font-size:14px; margin:0 0 10px; }
-  section.extra table { width:100%; border-collapse:collapse; font-size:13px; }
-  section.extra th, section.extra td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; }
-  section.extra.full-width { grid-template-columns: 1fr; }
-  .section-heading { font-size:16px; margin:0 0 12px; }
-  footer.foot { color:var(--muted); font-size:12px; text-align:center; margin-top:40px; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-sans); -webkit-font-smoothing: antialiased; }
+  summary { list-style: none; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  ::selection { background: rgba(126,147,239,0.32); }
+  main { max-width: 1080px; margin: 0 auto; padding: 34px 26px 90px; }
+
+  /* Grade pill — one class per Phase 2 bucket (90+/75+/60+/<60); text supplied by {{HARNESS_GRADE}} */
+  .grade-pill { font: 600 12px/1 var(--font-mono); padding: 4px 11px; border-radius: 20px; letter-spacing: 0.06em; }
+  .grade-excellent { color: var(--green); border: 1px solid rgba(95,207,154,0.34); background: rgba(95,207,154,0.10); }
+  .grade-good      { color: var(--green); border: 1px solid rgba(95,207,154,0.34); background: rgba(95,207,154,0.10); }
+  .grade-fair      { color: var(--amber); border: 1px solid rgba(221,192,102,0.34); background: rgba(221,192,102,0.10); }
+  .grade-needs-work{ color: var(--coral); border: 1px solid rgba(232,122,130,0.34); background: rgba(232,122,130,0.10); }
+
+  .chip { padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); font: 500 11.5px/1 var(--font-mono); color: var(--muted); }
+  .eyebrow { font: 500 10.5px/1 var(--font-mono); color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; }
+
+  /* Layout helpers used by emitted blocks (axis cards, action items, findings) reference these vars */
+  @media (max-width: 760px) {
+    .hero-grid { grid-template-columns: 1fr !important; }
+    .cycle-grid, .actions-grid, .findings-grid { grid-template-columns: 1fr !important; }
+    .axes-grid, .extra-grid { grid-template-columns: 1fr !important; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <header class="top">
-    <h1>Harness Maturity Report</h1>
-    <div class="meta">{{GENERATED_AT}} · scope: <b>{{SCOPE}}</b> · project: <b>{{PROJECT_NAME}}</b></div>
+
+  <!-- ===== Top bar ===== -->
+  <header style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:26px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:13px;">
+      <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(150deg,oklch(0.74 0.12 262),oklch(0.66 0.13 286));display:flex;align-items:center;justify-content:center;font:600 17px/1 var(--font-display);color:#0b0d12;box-shadow:0 2px 14px rgba(126,147,239,0.4);">↻</div>
+      <div>
+        <div style="font:600 17px/1.2 var(--font-display);letter-spacing:-0.01em;">Harness Maturity Report</div>
+        <div style="font:500 11.5px/1 var(--font-mono);color:var(--muted);margin-top:4px;letter-spacing:0.02em;">harness-ops · the harness cycle, diagnosed</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="chip">{{GENERATED_AT}}</span>
+      <span class="chip">scope <span style="color:var(--fg);">{{SCOPE}}</span></span>
+      <span class="chip">project <span style="color:var(--fg);">{{PROJECT_NAME}}</span></span>
+      <span class="chip">/check-harness</span>
+    </div>
   </header>
 
-  <section class="hero">
-    <div class="score-row">
-      <!-- {{HARNESS_SCORE}} must be a plain integer 0–100 (no % suffix) -->
-      <div class="score-bar-widget">
-        <div class="num">{{HARNESS_SCORE}}</div>
-        <div class="grade">{{HARNESS_GRADE}}</div>
-        <div class="track"><span style="width:{{HARNESS_SCORE}}%"></span></div>
+  <!-- ===== Hero: ring + summary ===== -->
+  <section class="hero-grid" style="background:linear-gradient(168deg,#1a1e28,#13161e 62%);border:1px solid var(--line);border-radius:20px;padding:30px;margin-bottom:18px;display:grid;grid-template-columns:330px 1fr;gap:34px;align-items:center;">
+
+    <!-- Ring -->
+    <div style="position:relative;width:320px;height:320px;justify-self:center;">
+      <svg width="320" height="320" viewBox="0 0 320 320" style="transform:rotate(-90deg);display:block;">
+        <circle cx="160" cy="160" r="140" fill="none" stroke="#222735" stroke-width="15"></circle>
+        <!-- {{RING_DASHARRAY}} = "<filled> 880" where filled = round(HARNESS_SCORE/100*880); circumference of r=140 ≈ 879.6 -->
+        <circle cx="160" cy="160" r="140" fill="none" stroke="var(--accent)" stroke-width="15" stroke-linecap="round" stroke-dasharray="{{RING_DASHARRAY}}"></circle>
+      </svg>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+        <div class="eyebrow">Harness Score</div>
+        <div style="font:700 76px/0.9 var(--font-display);letter-spacing:-0.04em;margin:9px 0 4px;">{{HARNESS_SCORE}}</div>
+        <div class="grade-pill {{GRADE_CLASS}}">{{HARNESS_GRADE}}</div>
       </div>
-      <div>
-        <h2>Summary</h2>
-        <p class="headline">{{HEADLINE}}</p>
-        <div class="sub-scores">
-          <div class="sub-score"><div class="lbl">User · L{{USER_LEVEL}}</div><div class="val">{{USER_SCORE}}</div><div class="bar"><span style="width:{{USER_SCORE}}%"></span></div></div>
-          <div class="sub-score"><div class="lbl">Project · L{{PROJECT_LEVEL}}</div><div class="val">{{PROJECT_SCORE}}</div><div class="bar"><span style="width:{{PROJECT_SCORE}}%"></span></div></div>
-          <div class="sub-score"><div class="lbl">Compounding · L{{COMPOUNDING_LEVEL}}</div><div class="val">{{COMPOUNDING_SCORE}}</div><div class="bar"><span style="width:{{COMPOUNDING_SCORE}}%"></span></div></div>
-        </div>
-        <div class="strength-weak">
-          <div class="s"><div class="lbl">Strengths</div>{{STRENGTH}}</div>
-          <div class="w"><div class="lbl">Areas to Improve</div>{{WEAKNESS}}</div>
-        </div>
-      </div>
+      <!-- 6 cycle nodes — node N fill = axis N status color (1=Scaffolding … 6=Compounding) -->
+      <div style="position:absolute;left:143px;top:3px;width:34px;height:34px;border-radius:50%;background:#13161e;border:2px solid {{NODE1_COLOR}};display:flex;align-items:center;justify-content:center;font:600 14px/1 var(--font-display);color:{{NODE1_COLOR}};box-shadow:0 0 0 5px #1a1e28;">1</div>
+      <div style="position:absolute;left:264px;top:73px;width:34px;height:34px;border-radius:50%;background:#13161e;border:2px solid {{NODE2_COLOR}};display:flex;align-items:center;justify-content:center;font:600 14px/1 var(--font-display);color:{{NODE2_COLOR}};box-shadow:0 0 0 5px #1a1e28;">2</div>
+      <div style="position:absolute;left:264px;top:213px;width:34px;height:34px;border-radius:50%;background:#13161e;border:2px solid {{NODE3_COLOR}};display:flex;align-items:center;justify-content:center;font:600 14px/1 var(--font-display);color:{{NODE3_COLOR}};box-shadow:0 0 0 5px #1a1e28;">3</div>
+      <div style="position:absolute;left:143px;top:283px;width:34px;height:34px;border-radius:50%;background:#13161e;border:2px solid {{NODE4_COLOR}};display:flex;align-items:center;justify-content:center;font:600 14px/1 var(--font-display);color:{{NODE4_COLOR}};box-shadow:0 0 0 5px #1a1e28;">4</div>
+      <div style="position:absolute;left:22px;top:213px;width:34px;height:34px;border-radius:50%;background:#13161e;border:2px solid {{NODE5_COLOR}};display:flex;align-items:center;justify-content:center;font:600 14px/1 var(--font-display);color:{{NODE5_COLOR}};box-shadow:0 0 0 5px #1a1e28;">5</div>
+      <div style="position:absolute;left:22px;top:73px;width:34px;height:34px;border-radius:50%;background:#13161e;border:2px solid {{NODE6_COLOR}};display:flex;align-items:center;justify-content:center;font:600 14px/1 var(--font-display);color:{{NODE6_COLOR}};box-shadow:0 0 0 5px #1a1e28;">6</div>
     </div>
-  </section>
 
-  <section class="cycle">
-    <h2>Cycle Overview</h2>
-    <!-- renderer must emit at least one <li> or replace with: <li class="why">None</li> -->
-    <ol>{{CYCLE_ROWS}}</ol>
-  </section>
-
-  <section>
-    <h2 class="section-heading">Axis Report (6 Axes)</h2>
-    <div class="axes">{{AXIS_CARDS}}</div>
-  </section>
-
-  <section class="actions">
-    <h2>Recommended Actions</h2>
-    <div class="action-buckets">
-      <!-- each {{ACTIONS_*}} must contain at least one <li> or fall back to: <li><span class="why">None</span></li> -->
-      <div class="bucket green"><h4>Quick Wins</h4><ul>{{ACTIONS_GREEN}}</ul></div>
-      <div class="bucket yellow"><h4>Plan Next</h4><ul>{{ACTIONS_YELLOW}}</ul></div>
-      <div class="bucket red"><h4>Long-term Improvements</h4><ul>{{ACTIONS_RED}}</ul></div>
-    </div>
-  </section>
-
-  <section class="extra">
+    <!-- Summary -->
     <div>
-      <h3>Runtime Inventory</h3>
+      <div class="eyebrow" style="margin-bottom:11px;">Where you stand</div>
+      <p style="margin:0 0 20px;font:500 19px/1.5 var(--font-display);letter-spacing:-0.01em;text-wrap:pretty;">{{HEADLINE}}</p>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px;">
+        <div style="background:#13161e;border:1px solid var(--line);border-radius:12px;padding:13px 14px;">
+          <div style="font:500 10px/1 var(--font-mono);color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;">👤 User · L{{USER_LEVEL}}</div>
+          <div style="font:600 26px/1 var(--font-display);margin:9px 0 9px;letter-spacing:-0.02em;">{{USER_SCORE}}</div>
+          <div style="height:4px;background:var(--line);border-radius:2px;overflow:hidden;"><span style="display:block;height:100%;width:{{USER_SCORE}}%;background:var(--green);border-radius:2px;"></span></div>
+        </div>
+        <div style="background:#13161e;border:1px solid var(--line);border-radius:12px;padding:13px 14px;">
+          <div style="font:500 10px/1 var(--font-mono);color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;">📁 Project · L{{PROJECT_LEVEL}}</div>
+          <div style="font:600 26px/1 var(--font-display);margin:9px 0 9px;letter-spacing:-0.02em;">{{PROJECT_SCORE}}</div>
+          <div style="height:4px;background:var(--line);border-radius:2px;overflow:hidden;"><span style="display:block;height:100%;width:{{PROJECT_SCORE}}%;background:var(--amber);border-radius:2px;"></span></div>
+        </div>
+        <div style="background:#13161e;border:1px solid var(--line);border-radius:12px;padding:13px 14px;">
+          <div style="font:500 10px/1 var(--font-mono);color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;">🔁 Compound · L{{COMPOUNDING_LEVEL}}</div>
+          <div style="font:600 26px/1 var(--font-display);margin:9px 0 9px;letter-spacing:-0.02em;">{{COMPOUNDING_SCORE}}</div>
+          <div style="height:4px;background:var(--line);border-radius:2px;overflow:hidden;"><span style="display:block;height:100%;width:{{COMPOUNDING_SCORE}}%;background:var(--accent);border-radius:2px;"></span></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;">
+        <div style="background:rgba(95,207,154,0.07);border:1px solid rgba(95,207,154,0.32);border-radius:12px;padding:12px 14px;">
+          <div style="font:500 10px/1 var(--font-mono);color:var(--green);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">Strength</div>
+          <div style="font-size:13px;line-height:1.5;color:var(--fg-2);text-wrap:pretty;">{{STRENGTH}}</div>
+        </div>
+        <div style="background:rgba(232,122,130,0.06);border:1px solid rgba(232,122,130,0.3);border-radius:12px;padding:12px 14px;">
+          <div style="font:500 10px/1 var(--font-mono);color:var(--coral);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">To improve</div>
+          <div style="font-size:13px;line-height:1.5;color:var(--fg-2);text-wrap:pretty;">{{WEAKNESS}}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Cycle Overview strip ===== -->
+  <section style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:15px;">
+      <h2 style="margin:0;font:600 15px/1 var(--font-display);">The cycle</h2>
+      <span style="font:500 11px/1 var(--font-mono);color:var(--muted);">Scaffolding → … → Compounding ↻</span>
+    </div>
+    <!-- renderer emits 6 stage cards into the grid below -->
+    <div class="cycle-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;">{{CYCLE_STRIP}}</div>
+  </section>
+
+  <!-- ===== Axis cards ===== -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:26px 2px 14px;">
+    <h2 style="margin:0;font:600 16px/1 var(--font-display);">Axis report · 6 axes</h2>
+    <span style="font:500 11px/1 var(--font-mono);color:var(--muted);">PASS=1 · WEAK=0.5 · FAIL=0 · weighted L1×3 L2×2 L3×1</span>
+  </div>
+  <!-- renderer emits 6 axis <article> cards into the grid below -->
+  <div class="axes-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">{{AXIS_CARDS}}</div>
+
+  <!-- ===== Recommended actions ===== -->
+  <section style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-top:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h2 style="margin:0;font:600 16px/1 var(--font-display);">Recommended next moves</h2>
+      <span style="font:500 11px/1 var(--font-mono);color:var(--muted);">pick what feels manageable</span>
+    </div>
+    <div class="actions-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:13px;">
+      <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:15px 16px;">
+        <h4 style="margin:0 0 12px;font:600 11px/1 var(--font-mono);color:var(--green);text-transform:uppercase;letter-spacing:0.08em;">● Quick wins</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px;">{{ACTIONS_GREEN}}</ul>
+      </div>
+      <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:15px 16px;">
+        <h4 style="margin:0 0 12px;font:600 11px/1 var(--font-mono);color:var(--amber);text-transform:uppercase;letter-spacing:0.08em;">● Plan next</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px;">{{ACTIONS_YELLOW}}</ul>
+      </div>
+      <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:15px 16px;">
+        <h4 style="margin:0 0 12px;font:600 11px/1 var(--font-mono);color:var(--coral);text-transform:uppercase;letter-spacing:0.08em;">● Long-term</h4>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px;">{{ACTIONS_RED}}</ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Inventory + Matrix ===== -->
+  <section class="extra-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px;">
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;">
+      <h3 style="margin:0 0 14px;font:600 14px/1 var(--font-display);">Runtime inventory</h3>
       {{INVENTORY_TABLE}}
     </div>
-    <div>
-      <h3>2×3 Matrix (Static / Behavioral / Growth)</h3>
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;">
+      <h3 style="margin:0 0 5px;font:600 14px/1 var(--font-display);">2×3 analysis matrix</h3>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Static set-up vs behavioral doing vs growth — across scopes.</div>
       {{MATRIX_TABLE}}
     </div>
   </section>
 
-  <section class="extra full-width">
-    <div>
-      <h3>Detailed Findings</h3>
-      {{FINDINGS_LIST}}
+  <!-- ===== Findings ===== -->
+  <section style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:18px;">
+    <h3 style="margin:0 0 14px;font:600 14px/1 var(--font-display);">Detailed findings</h3>
+    <div class="findings-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px;">
+      <div>
+        <div style="font:500 10px/1 var(--font-mono);color:var(--coral);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">High priority</div>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;">{{FINDINGS_HIGH}}</ul>
+      </div>
+      <div>
+        <div style="font:500 10px/1 var(--font-mono);color:var(--amber);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Medium priority</div>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;">{{FINDINGS_MEDIUM}}</ul>
+      </div>
+      <div>
+        <div style="font:500 10px/1 var(--font-mono);color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Low priority</div>
+        <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;">{{FINDINGS_LOW}}</ul>
+      </div>
     </div>
   </section>
 
-  <footer class="foot">Generated by <code>/check-harness</code> · {{SESSION_ID}}</footer>
+  <footer style="text-align:center;margin-top:34px;font:500 11px/1.6 var(--font-mono);color:#5b6472;">Generated by <span style="color:var(--muted);">/check-harness</span> · 24 items · 6 axes · session {{SESSION_ID}}</footer>
+
 </main>
 </body>
 </html>

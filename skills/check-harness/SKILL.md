@@ -513,38 +513,107 @@ Same structure for all 6 axes. Each axis section should be 5–12 lines.
 
 ### C block — HTML report generation
 
-1. Read `references/html-template.html` (self-contained HTML — inline CSS, score gauge, per-axis cards, collapsible panels)
-2. Replace the following placeholders:
-   - `{{GENERATED_AT}}`, `{{SCOPE}}`, `{{PROJECT_NAME}}`
-   - `{{HARNESS_SCORE}}`, `{{HARNESS_GRADE}}`
-   - `{{USER_SCORE}}`, `{{USER_LEVEL}}`, `{{PROJECT_SCORE}}`, `{{PROJECT_LEVEL}}`, `{{COMPOUNDING_SCORE}}`, `{{COMPOUNDING_LEVEL}}`
-   - `{{HEADLINE}}`, `{{STRENGTH}}`, `{{WEAKNESS}}`
-   - `{{CYCLE_ROWS}}` — 6 axis one-liners as `<li>{cycle_line}</li>`
-   - `{{ACTIONS_GREEN}}`, `{{ACTIONS_YELLOW}}`, `{{ACTIONS_RED}}` — action cards as `<li>`
-   - `{{AXIS_CARDS}}` — 6 axis cards (per-axis structure below)
-   - `{{INVENTORY_TABLE}}` — runtime inventory table
-   - `{{MATRIX_TABLE}}` — 2×3 matrix
-   - `{{FINDINGS_LIST}}`
-3. Write, then run `Bash: open {dir}/report.html` — opens in the default macOS browser.
+The template (`references/html-template.html`) is a self-contained dark dashboard: top bar → **SVG ring hero** (ring + 6 cycle nodes) → cycle strip → 6 axis cards → recommended next moves → runtime inventory + 2×3 matrix → 3-column findings → footer. It loads Space Grotesk + IBM Plex Mono from Google Fonts with a system-font fallback, and defines status colors as CSS vars (`--green` `oklch(0.78 0.12 155)`, `--amber` `oklch(0.82 0.12 82)`, `--coral` `oklch(0.70 0.15 22)`, `--accent` `oklch(0.74 0.12 262)`, `--na` `#6b7280`) plus the four grade-pill classes.
 
-Per-axis card block example (repeated inside HTML):
+1. Read `references/html-template.html`.
+2. Replace **every** placeholder below (the template and this list must stay in 1:1 parity — no orphan tokens, and a finished render must contain no literal `{{`):
+
+   **Scalars**
+   - `{{GENERATED_AT}}`, `{{SCOPE}}`, `{{PROJECT_NAME}}`
+   - `{{HARNESS_SCORE}}` (plain integer 0–100, no `%`), `{{HARNESS_GRADE}}` (text: `Excellent|Good|Fair|Needs Work`)
+   - `{{HEADLINE}}`, `{{STRENGTH}}`, `{{WEAKNESS}}`
+   - `{{USER_SCORE}}`, `{{USER_LEVEL}}`, `{{PROJECT_SCORE}}`, `{{PROJECT_LEVEL}}`, `{{COMPOUNDING_SCORE}}`, `{{COMPOUNDING_LEVEL}}` (scores are plain integers; they also drive mini-bar widths via `width:{{…}}%`)
+   - `{{SESSION_ID}}`
+
+   **Ring + grade (computed — see below)**
+   - `{{RING_DASHARRAY}}` — the two-value SVG dash for the progress arc
+   - `{{GRADE_CLASS}}` — one of `grade-excellent | grade-good | grade-fair | grade-needs-work`
+   - `{{NODE1_COLOR}}`, `{{NODE2_COLOR}}`, `{{NODE3_COLOR}}`, `{{NODE4_COLOR}}`, `{{NODE5_COLOR}}`, `{{NODE6_COLOR}}` — the 6 cycle-node fill colors
+
+   **Generated blocks (emit inner HTML; on an empty list emit a single `None` item — never leave the slot blank or tokenized)**
+   - `{{CYCLE_STRIP}}` — 6 stage cards (cycle-card markup below)
+   - `{{AXIS_CARDS}}` — 6 axis `<article>` cards (axis-card markup below)
+   - `{{ACTIONS_GREEN}}`, `{{ACTIONS_YELLOW}}`, `{{ACTIONS_RED}}` — `<li>` action items (action-item markup below)
+   - `{{INVENTORY_TABLE}}`, `{{MATRIX_TABLE}}` — runtime inventory blocks / 2×3 matrix grid
+   - `{{FINDINGS_HIGH}}`, `{{FINDINGS_MEDIUM}}`, `{{FINDINGS_LOW}}` — `<li>` finding items (finding-item markup below)
+3. Write, then run `Bash: open {dir}/report.html` — opens in the default browser.
+
+#### Ring, node, and grade computation
+
+- **`{{RING_DASHARRAY}}`** = `"{filled} 880"` where `filled = round(HARNESS_SCORE / 100 * 880)` (the ring is `r=140`, circumference ≈ 879.6). Two values are required — a single value would tile the dash instead of drawing one progress arc. Example: score 68 → `"598 880"`.
+- **`{{NODE1_COLOR}}` … `{{NODE6_COLOR}}`** map **node N → axis N in cycle order** (1=Scaffolding, 2=Context, 3=Planning, 4=Execution, 5=Verification, 6=Compounding). Each value is that axis's rolled-up **status color**: PASS→`oklch(0.78 0.12 155)`, WEAK→`oklch(0.82 0.12 82)`, FAIL→`oklch(0.70 0.15 22)`, N/A→`#6b7280` (same palette as the axis-card border-left, matching the template's `--green/--amber/--coral/--na`).
+- **`{{GRADE_CLASS}}`** from the score bucket: `≥90 → grade-excellent`, `≥75 → grade-good`, `≥60 → grade-fair`, `<60 → grade-needs-work`. `{{HARNESS_GRADE}}` carries the matching visible text.
+
+#### Status → color reference (used by all emitted blocks)
+
+| Status | Accent color | Badge bg | Badge text |
+|--------|--------------|----------|------------|
+| PASS | `oklch(0.78 0.12 155)` | `rgba(95,207,154,0.16)` | green |
+| WEAK | `oklch(0.82 0.12 82)` | `rgba(221,192,102,0.16)` | amber |
+| FAIL | `oklch(0.70 0.15 22)` | `rgba(232,122,130,0.16)` | coral |
+| N/A | `#6b7280` | `rgba(107,114,128,0.16)` | `#6b7280` |
+
+#### Cycle stage card (×6, into `{{CYCLE_STRIP}}`) — `border-top` = axis status accent color
+
 ```html
-<article class="axis" data-status="{pass|weak|fail|na}">
-  <header>
-    <h3>{icon} Axis {N} — {name}</h3>
-    <div class="score">
-      <span class="score-num">{NN}</span>
-      <div class="bar"><span style="width:{XX}%"></span></div>
-      <span class="level">L{n}</span>
+<div style="background:#1a1e28;border:1px solid #272c38;border-top:2px solid {accent};border-radius:10px;padding:13px 13px 14px;">
+  <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;"><span style="font:600 11px/1 var(--font-mono);color:#8a93a6;">0{N}</span><span style="font:600 13px/1 var(--font-display);">{Axis name}</span></div>
+  <div style="font-size:11.5px;line-height:1.45;color:#aab2c2;">{✅|⚠️|❌} {one-liner + one supporting number}</div>
+</div>
+```
+
+#### Axis card (×6, into `{{AXIS_CARDS}}`) — `border-left` + score bar + node share the axis accent color
+
+```html
+<article style="background:#13161e;border:1px solid #272c38;border-left:3px solid {accent};border-radius:14px;padding:17px 18px;display:flex;flex-direction:column;gap:11px;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;"><span style="font:600 11px/1 var(--font-mono);color:#8a93a6;">0{N}</span><h3 style="margin:0;font:600 15px/1.1 var(--font-display);">{name}</h3></div>
+      <div style="font:500 11px/1 var(--font-mono);color:#8a93a6;margin-top:5px;">{scope label, e.g. 👤 User · Static}</div>
     </div>
-  </header>
-  <p class="headline">{one-line summary}</p>
-  <details><summary>Checklist · {PASS_N}/{TOTAL_N} passed</summary>
-    <table>...</table>
+    <div style="text-align:right;min-width:84px;">
+      <div style="display:flex;align-items:baseline;justify-content:flex-end;gap:6px;"><span style="font:700 21px/1 var(--font-display);letter-spacing:-0.02em;">{score}</span><span style="font:500 11px/1 var(--font-mono);color:#8a93a6;">L{n}</span></div>
+      <div style="height:5px;width:84px;background:#272c38;border-radius:3px;overflow:hidden;margin-top:7px;"><span style="display:block;height:100%;width:{score}%;background:{accent};border-radius:3px;"></span></div>
+    </div>
+  </div>
+  <p style="margin:0;font-size:13px;line-height:1.5;color:#cfd5e2;text-wrap:pretty;">{headline}</p>
+  <details style="background:#0f1218;border:1px solid #232834;border-radius:9px;padding:9px 12px;">
+    <summary style="font:500 12px/1 var(--font-mono);color:#8a93a6;display:flex;align-items:center;justify-content:space-between;">Checklist <span style="color:#6b7280;">{e.g. 3 pass · 2 weak}</span></summary>
+    <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+      <!-- one <tr> per checklist row: -->
+      <tr style="border-top:1px solid #1f2430;">
+        <td style="padding:6px 7px 6px 0;vertical-align:top;font:500 11px/1.3 var(--font-mono);color:#6b7280;white-space:nowrap;">{id}<br /><span style="color:#4d5564;">{L1|L2|L3}</span></td>
+        <td style="padding:6px 7px;vertical-align:top;font-size:12px;line-height:1.35;">{item}<div style="color:#8a93a6;font:400 11px/1.35 var(--font-mono);margin-top:2px;">{evidence}</div></td>
+        <td style="padding:6px 0 6px 7px;vertical-align:top;text-align:right;white-space:nowrap;"><span style="display:inline-block;padding:2px 8px;border-radius:11px;font:600 10px/1.4 var(--font-mono);background:{badgeBg};color:{badgeColor};">{PASS|WEAK|FAIL|N/A}</span></td>
+      </tr>
+    </table>
   </details>
-  <p class="next-move">💡 {quick win}</p>
+  <div style="display:flex;align-items:flex-start;gap:7px;font-size:12.5px;line-height:1.45;color:var(--accent);"><span style="flex-shrink:0;">→</span><span style="text-wrap:pretty;">{next move}</span></div>
 </article>
 ```
+
+#### Action item (`<li>`, into `{{ACTIONS_GREEN/YELLOW/RED}}`) — lead with scope emoji; `<code>` is optional
+
+```html
+<li style="background:#13161e;border:1px solid #272c38;border-radius:9px;padding:11px 12px;">
+  <div style="font-size:13px;font-weight:600;line-height:1.4;">{👤|📁|👤📁} {action title}</div>
+  <div style="font-size:11.5px;color:#8a93a6;line-height:1.45;margin-top:4px;">{expected effect}</div>
+  <code style="display:inline-block;margin-top:8px;font:500 11px/1.4 var(--font-mono);background:#0f1218;border:1px solid #232834;padding:3px 7px;border-radius:5px;color:#cfd5e2;">{command or path}</code>
+</li>
+```
+
+#### Finding item (`<li>`, into `{{FINDINGS_HIGH/MEDIUM/LOW}}`) — bullet color = coral / amber / muted by priority
+
+```html
+<li style="font-size:12.5px;line-height:1.5;color:#cfd5e2;padding-left:16px;position:relative;text-wrap:pretty;"><span style="position:absolute;left:0;color:{coral|amber|#8a93a6};">💡</span>{one suggestion sentence}</li>
+```
+
+#### Inventory + matrix
+
+- **`{{INVENTORY_TABLE}}`** — emit the Plugins table (name · scope · skills · 30d use), the MCP-servers block, and the Skill-origins counters (user standalone / via plugin / project local), inline-styled to match the surrounding panels. Empty section → a single `None configured` line.
+- **`{{MATRIX_TABLE}}`** — emit the 2×3 grid: rows 👤 User / 📁 Project × columns Static / Behavioral / Growth (Growth cell spans both rows), each cell showing the axis label + score, plus the "Gap read" summary line.
+
+**Empty-list rule (all generated blocks):** if a list (actions, findings, inventory rows) has zero items, emit a single muted `None` item — never leave a placeholder unreplaced.
 
 ### Report tone guide
 
