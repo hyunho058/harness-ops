@@ -150,7 +150,68 @@ noise. Curation owner = the human (see Phase 5).
 
 ---
 
+## Run State (`progress.md`) — resumable across compaction
+
+A long or unattended loop is **compacted** (its context cleared) many times before it finishes.
+The contract (`loop.md`) survives that — but the loop's *position* does not, and one piece of that
+position is load-bearing: the **anti-spin counter**. If a compact resets it, the loop forgets it
+was making no progress and thrashes forever (see the Anti-spin rule). So a multi-iteration loop
+persists its run-state to a sibling `progress.md` and reloads it on resume.
+
+`progress.md` is **transient**: it exists only while a multi-iteration run is in flight and is
+deleted on a clean exit. It is safe to `.gitignore`, and the loop never commits it.
+
+**Location.** `<specDir>/progress.md` — beside `loop.md` and `loop-escalation.md`.
+
+**Shape** (Markdown; read leniently *above* a required-field floor):
+
+```
+## Run State
+- feature: <task/feature id this contract is for>
+- phase: WORK | VERIFY | DECIDE
+- iteration: <n>
+- gates: g1 <pass/fail> | g2 <measured vs threshold> | g3 <score>
+- next: <the next increment that was about to run>
+- anti_spin: last_progress_iter=<n>, stuck=<k>
+- checkpoint: <git SHA of the last green loop-back>   # optional
+- why: <one line of rationale a compact would otherwise drop>
+- contract_ref: <fingerprint of loop.md — Goal line + Gate-1 command set>
+```
+
+**Required-field floor.** `iteration`, `anti_spin`, and `contract_ref` MUST be present and
+parseable for a resume to proceed. Every other field is read leniently. If any floor field is
+missing or unparseable, the file is stale — discard it (see Phase 0 Resume).
+
+**`anti_spin` is the load-bearing field.** It is the one piece of state that cannot be
+re-derived after a compact; preserving it is the whole reason this file exists.
+
+**`contract_ref`** is a normalised fingerprint of the contract this run-state belongs to — the
+`loop.md` Goal line plus its Gate-1 command set. Phase 0 recomputes it from the current `loop.md`
+and resumes only on a match; a mismatch means the run-state is from a different/changed contract
+and is discarded. (It detects *contract* drift, not hand-edits to the source between turns —
+which is why resume re-runs VERIFY rather than trusting the flushed `gates`.)
+
+**`checkpoint`** is best-effort: record the git SHA on a green loop-back when the repo is a git
+repo; omit the field otherwise. Resume never depends on it. On a *preserved escalation* file
+`checkpoint`/`next` are breadcrumbs for the human — not "replay and continue" instructions; the
+human re-enters via Phase 0, which re-runs VERIFY and re-approves.
+
+---
+
 ## Phase 0 — Establish the Contract
+
+0. **Resume check (before anything).** Look for `<specDir>/progress.md` (see "Run State"). If it
+   exists, validate it: it must parse, carry the floor fields (`iteration`, `anti_spin`,
+   `contract_ref`), and its `contract_ref` must equal the fingerprint recomputed from the current
+   `loop.md`.
+   - **Valid** → **RESUME**: restore `feature`, `phase`, `iteration`, and the `anti_spin` counter,
+     and continue the loop mid-run instead of starting over — but **re-run VERIFY** rather than
+     trusting the flushed `gates` (the working tree may have changed between turns). The contract
+     is the existing `loop.md`; skip the fresh derivation in step 1.
+   - **Stale / mismatched / corrupt** (missing floor field, unparseable, or `contract_ref`
+     mismatch) → delete `progress.md` and fall through to a fresh start. Never resume on partial
+     state — re-deriving is safer than resuming wrong (same spirit as the Stale-lesson rule).
+   - **Absent** → normal fresh start (steps 1-3), exactly as before.
 
 1. **Find or build `loop.md`.** Look for an existing `loop.md` (repo root, the
    spec/feature dir, or a path the user named). If one exists, read it and use
@@ -167,11 +228,20 @@ noise. Curation owner = the human (see Phase 5).
    `needs-review` and `retired` lessons are shown but NOT activated. Do not
    re-harden — load the stored `form` as-is. Pull lessons only from THIS
    `loop.md`, never from other contracts.
-3. **Get approval.** Present the drafted contract (including any active lessons
-   now folded in) and confirm via AskUserQuestion before running the loop. The
-   user owns the bar; you don't get to lower it later. Write the approved
-   contract to `loop.md` — and when you (re)write it, **preserve the existing
-   `## Lessons` section verbatim**; never overwrite or drop it.
+3. **Get approval** — *unless the contract is pre-approved for unattended.*
+   **Pre-approval bypass (opt-in, additive):** if the invocation carries the
+   `mode: unattended` marker AND the existing `loop.md` carries the line
+   `pre-approved-unattended: yes` (written by a batch approver such as the
+   `build-order` skill, where a human approved every feature's contract up front),
+   then a human already owns this bar — **skip the AskUserQuestion** and proceed to
+   run the gates. The bypass skips only the *approval prompt*: every gate, the
+   maker ≠ checker rule, the autonomy fence, and lesson loading still run unchanged.
+   In every other case (interactive, no marker, or no `pre-approved-unattended`
+   line): present the drafted contract (including any active lessons now folded in)
+   and confirm via AskUserQuestion before running the loop. The user owns the bar;
+   you don't get to lower it later. Either way, write the approved contract to
+   `loop.md` — and when you (re)write it, **preserve the existing `## Lessons`
+   section verbatim**; never overwrite or drop it.
 
 If the task is trivial and the user just wants it run, you may present a minimal
 contract (Gate 1 only) and proceed on approval — but always state the gates.
@@ -195,11 +265,11 @@ Phase 2  VERIFY  (run the gates, top to bottom)
           with grounds + action — see "Gate 3 — maker ≠ checker".
 
 Phase 3  DECIDE
-  IF every gate passes        → EXIT  → emit Evidence Report (done)
-  ELIF the fix is Auto-fix    → apply it, loop back to Phase 1
-  ELIF boundary hit           → ESCALATE (stop, ask the human)
+  IF every gate passes        → delete progress.md → EXIT → emit Evidence Report (done)
+  ELIF the fix is Auto-fix    → FLUSH progress.md → apply it, loop back to Phase 1
+  ELIF boundary hit           → ESCALATE (keep progress.md; stop, ask the human)
   ELSE (can't fix within bounds, or no progress two iterations running)
-                              → ESCALATE with the blocker
+                              → ESCALATE with the blocker (keep progress.md)
 ```
 
 **Anti-spin rule:** if an iteration makes no gate go from fail→pass, do not loop
@@ -209,6 +279,19 @@ again blindly — report the stuck gate and escalate. Loops fix; they don't thra
 fails because it *can't run* (missing tool/file) rather than on substance, treat
 it as environmentally stale — mark that lesson `needs-review`, surface it, and do
 not let it wedge the gate. Never auto-delete a lesson.
+
+**Run-state flush (resumability).** The flush that makes a loop resumable fires at exactly one
+place: the **loop-back branch of Phase 3** — the instant the loop decides "Auto-fix → loop back
+to Phase 1," it writes `<specDir>/progress.md` (see "Run State"), then continues. It does **not**
+fire on the EXIT branch and **not** on iteration-1 entry, so the first write is the iteration-1→2
+transition and any run that reaches EXIT or ESCALATE on iteration 1 writes nothing — a single-pass
+run leaves no `progress.md`. Write it **atomically** (temp file, then rename) so a compact/crash
+mid-write can never leave a torn file. Record the anti-spin counter (`last_progress_iter`,
+`stuck`) in that flush — it is the state that must survive the next compact.
+
+**Run-state lifecycle.** Delete `progress.md` on a clean EXIT (all gates passed). **Keep** it on
+ESCALATE so a human can resume after resolving; an escalation before any loop-back creates none
+(the escalation already surfaces via AskUserQuestion / PushNotification / `loop-escalation.md`).
 
 ---
 
@@ -316,7 +399,10 @@ that re-runs Work → Verify → Fix unattended until the gates pass or it escal
 ```
 
 `/loop <interval>` is the recurring runner; `mode: unattended` is the marker that
-Phase 5 keys on. Nothing new is built — automation is just this command plus the
+Phase 5 keys on — and that **Phase 0's pre-approval bypass** keys on: when an approved
+`loop.md` carries `pre-approved-unattended: yes`, the contract `AskUserQuestion` is
+skipped (e.g. under the `build-order` orchestrator, which batch-approves every feature's
+contract up front). Nothing new is built — automation is just this command plus the
 rules below. (No always-on daemon; stop it the way you'd stop any `/loop`.)
 
 **On escalation, surface — don't push through.** When an unattended tick hits a
@@ -325,6 +411,11 @@ tick and notify a human via **`PushNotification`**. If `PushNotification` isn't
 available in the environment, append the escalation reason to
 `<specDir>/loop-escalation.md` for the human to find next session. Either way the
 tick ends there — it does not push through the fence.
+
+**Resumable across compaction.** An unattended heartbeat is compacted repeatedly, so each tick
+persists its run-state to `progress.md` (see "Run State") and the next tick resumes from it via
+Phase 0 — the **anti-spin counter and iteration survive the compact** instead of resetting. This
+is what lets a multi-hour unattended loop converge instead of thrashing by forgetting it was stuck.
 
 **Hard limits (unchanged by automation):**
 - The autonomy fence still holds — STOP-list items escalate, never auto-proceed.
@@ -345,3 +436,4 @@ tick ends there — it does not push through the fence.
 6. **`loop.md` is the source of truth** — persist the approved contract so the loop is resumable and auditable.
 7. **Maker ≠ checker on Gate 3** — the maker never scores its own Gate 3; a separate checker subagent does, or it's flagged `unverified`. Gate 1·2 stay maker-run.
 8. **New capabilities are opt-in and additive** — Lessons activate only when `## Lessons` exists; auto-recording only under the `mode: unattended` marker; automation only via `/loop`. The invocation interface (args) is unchanged, so existing callers — including agent-orchestrate's Ralph Loop pattern and its Phase 3.5 verification gate — keep working unmodified. A bare contract with no marker behaves exactly as before; the one always-on change is that Gate 3 is checker-scored when the `Agent` tool is available.
+9. **Run-state is resumable and transient** — a multi-iteration loop persists run-state to `<specDir>/progress.md` and resumes from it across compaction, so the **anti-spin counter survives** and an unattended loop can't thrash by forgetting it was stuck. It is opt-in by nature (a run that never loops back writes nothing), transient (deleted on clean EXIT, never auto-committed, safe to `.gitignore`), and changes no gate, no maker ≠ checker rule, and no Lessons behaviour — the invocation interface (args) is unchanged, so existing callers keep working unmodified.
