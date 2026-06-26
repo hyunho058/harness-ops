@@ -2,7 +2,7 @@
 
 A Claude Code plugin for **Harness Engineering**.
 
-The art of designing environments where AI agents work well — 9 skills covering the full harness lifecycle: diagnose, plan, build, test, and maintain.
+The art of designing environments where AI agents work well — 11 skills covering the full harness lifecycle: diagnose, plan, build, test, and maintain — now including a **resumable, unattended multi-feature build pipeline** (`loop` → `build-order` → `autopilot`).
 
 ## Skills
 
@@ -15,7 +15,9 @@ The art of designing environments where AI agents work well — 9 skills coverin
 | **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness-ops:qa [target]` |
 | **context-audit** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:context-audit` |
 | **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness-ops:agent-orchestrate "task"` |
-| **loop** | Run a task as a supervised verification loop — establishes a 3-gate contract (Pass/Fail · Quantitative · Qualitative), iterates Work→Verify→Fix until gates pass, emits an evidence report, and escalates at autonomy boundaries (schema / migration / auth / payment / spec conflict). **Compounds across runs**: self-learning `## Lessons` (reloaded each run, recorded on failure), maker≠checker Gate 3 (a separate subagent scores the qualitative gate), and an opt-in scheduled heartbeat | `/harness-ops:loop "task"` |
+| **loop** | Run a task as a supervised verification loop — establishes a 3-gate contract (Pass/Fail · Quantitative · Qualitative), iterates Work→Verify→Fix until gates pass, emits an evidence report, and escalates at autonomy boundaries (schema / migration / auth / payment / spec conflict). **Resumable across compaction**: run-state persists to `progress.md`, so the anti-spin counter and progress survive a compact and a long/unattended run picks up where it left off. **Compounds across runs**: self-learning `## Lessons` (reloaded each run, recorded on failure), maker≠checker Gate 3 (a separate subagent scores the qualitative gate), and an opt-in scheduled heartbeat | `/harness-ops:loop "task"` |
+| **build-order** | Orchestrate **many** feature specs through `loop` as one resumable build — generates a topological `build_order.md` ledger, drives each ready feature via `/loop` (verify-first, so already-built features pass without rework), advances on green and **parks-and-continues** independent features on escalation. The durable ledger survives context compaction. | `/harness-ops:build-order [specs glob\|resume]` |
+| **autopilot** | Run a `build-order` **unattended** (overnight) — a safety-governor + scheduler (ScheduleWakeup primary + durable cron backstop) that ticks build-order with **six hard limits** (wall-clock · max-tick · consecutive-park · per-tick-timeout · crash-loop · kill-switch) and halts safely. **Never drives a live session** (no tmux / `/compact` injection); resumable across session death. | `/harness-ops:autopilot [start\|status\|stop]` |
 | **worktree** | Create / list / remove isolated git worktrees so you can run independent parallel Claude Code sessions on separate branches without interference | `/harness-ops:worktree [create\|list\|remove]` |
 | **generate-team** | Design and build an agent team architecture — delegates to the `harness-factory` plugin (must be installed separately) | `/harness-ops:generate-team [description]` |
 
@@ -60,6 +62,12 @@ claude plugin install harness-ops@harness-ops-marketplace
 
 # Check if your context docs are stale or contradictory
 /harness-ops:context-audit
+
+# Orchestrate many specs into one resumable build (drive each via /loop)
+/harness-ops:build-order specs/*/spec.md
+
+# Run that build-order unattended overnight, with safety limits + a kill-switch
+/harness-ops:autopilot start ./build_order.md
 ```
 
 ## The Loop: compounding verification
@@ -81,9 +89,29 @@ claude plugin install harness-ops@harness-ops-marketplace
 
 All three are additive and opt-in: a `loop.md` with no `## Lessons` and an invocation with no `mode: unattended` marker behaves exactly as before. The one always-on change is that Gate 3 is now checker-scored when a subagent tool is available.
 
+## The night-loop stack: `loop` → `build-order` → `autopilot`
+
+Three layers compose into a pipeline that can build a multi-feature project **unattended overnight** — throw approved specs at it, sleep, and review in the morning. Each layer keeps its state on disk so the whole run survives the context compactions (and even a session death) a multi-hour run hits.
+
+```
+③ autopilot   — schedules ticks + enforces six safety limits (judgment = 0; never drives a live session)
+   │ ticks: /build-order resume
+②  build-order — many specs → drive each ready feature via /loop; green→done, escalate→park + continue independents
+   │ per feature: /loop (verify-first)
+①   loop       — one feature to "done" through the 3 gates; resumable across compaction
+```
+
+- **① `loop`** is resumable — `progress.md` keeps the run-state (iteration, anti-spin counter, gate results) so a compact can't make it thrash or restart.
+- **② `build-order`** is the layer above: it plans a topological `build_order.md`, batch-approves every feature's gate contract up front, then drives each ready feature through `loop`. A feature that escalates is **parked** (sticky until a human un-parks it) while independent features keep going. The gates are the only "done" signal — already-built features verify-green with no rework.
+- **③ `autopilot`** keeps `build-order` ticking on a schedule (a `ScheduleWakeup` primary cadence + a durable `CronCreate` backstop that resurrects a hung/dead tick), enforcing six hard limits and a kill-switch file. It is a *governor*: judgment = 0, it never decides the work and — by using a **scheduled fresh-tick model rather than driving a live session** — it never injects keystrokes or `/compact` into a running session.
+
+The three layers nest: `autopilot.md` (which tick) ⊃ `build_order.md` (which feature) ⊃ `loop.md` + `progress.md` (where inside that feature). Everything is opt-in and additive — use `loop` alone for one feature, add `build-order` for many, add `autopilot` to run them unattended.
+
 ## Usage with Gemini CLI
 
 The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads the `harness-ops/` subdirectory name as the namespace prefix, registering skills as `/harness-ops:skill-name`.
+
+> **Note:** the Gemini `.toml` files **embed a copy** of each skill's `SKILL.md`, so they must be regenerated when a skill changes. The newest work is **Claude Code first**: `build-order` and `autopilot` have no `.toml` yet, and `loop.toml` does not yet include the latest resumability / pre-approval additions. Gemini CLI therefore exposes the original 9 skills — regenerate the toml files to bring the new capabilities to Gemini.
 
 ### Quick Start
 
@@ -133,6 +161,9 @@ commands/               # Slash commands — one .md per skill
   requirements-interview.md
   context-audit.md
   agent-orchestrate.md
+  loop.md
+  build-order.md
+  autopilot.md
   worktree.md
   generate-team.md      # Bridge to harness-factory plugin
 skills/                 # Skill implementations
@@ -144,6 +175,8 @@ skills/                 # Skill implementations
   context-audit/SKILL.md
   agent-orchestrate/SKILL.md
   loop/SKILL.md
+  build-order/SKILL.md
+  autopilot/SKILL.md
   worktree/SKILL.md
 agents/                 # Subagent definitions
   skill-portfolio-analyzer.md
