@@ -143,6 +143,12 @@ Append/replace the Requirements section in spec.md:
 
 Print ALL requirements and sub-requirements as text (show everything, do not truncate), then AskUserQuestion (Approve/Revise/Abort).
 
+**Batch-mode bypass (additive, opt-in — see specify `SKILL.md` › `## Batch Mode`):**
+if invoked with `mode: batch` AND the feature's partition-manifest entry carries
+`pre-approved-batch: yes`, SKIP this `AskUserQuestion` and advance to L4 with the
+derived requirements (the coverage / boundary / GWT self-checks above still run). A
+bare invocation with no marker is unchanged.
+
 ### L3 Gate
 
 Read spec.md and verify:

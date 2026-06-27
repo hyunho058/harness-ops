@@ -191,6 +191,14 @@ AskUserQuestion(
 - **Revise requirements (L3)** / **Revise tasks (L4)** → loop back to the named layer.
 - **Abort** → stop.
 
+**Batch-mode bypass (additive, opt-in — see specify `SKILL.md` › `## Batch Mode`):**
+if invoked with `mode: batch` AND the feature's partition-manifest entry carries
+`pre-approved-batch: yes`, SKIP this final `AskUserQuestion`. The L4 gate / coverage
+checks above still run and the derived plan is recorded, but batch mode's deliverable
+is the written `spec.md` ONLY: it does **NOT** trigger the Handoff to Execution below
+(the caller — decompose, then build-order — owns execution). A bare invocation with no
+marker is unchanged and still hands off on Execute.
+
 ### Handoff to Execution (on Execute)
 
 The spec is the *what* and the *order*; agent-orchestrate is the *how*. The Tasks

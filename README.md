@@ -2,7 +2,7 @@
 
 A Claude Code plugin for **Harness Engineering**.
 
-The art of designing environments where AI agents work well — 11 skills covering the full harness lifecycle: diagnose, plan, build, test, and maintain — now including a **resumable, unattended multi-feature build pipeline** (`loop` → `build-order` → `autopilot`).
+The art of designing environments where AI agents work well — 13 skills covering the full harness lifecycle: diagnose, plan, build, test, and maintain — now including a **resumable, unattended multi-feature build pipeline** (`loop` → `build-order` → `autopilot`) and **coherent multi-spec authoring** (`decompose` + `coherence-audit`).
 
 ## Skills
 
@@ -10,13 +10,15 @@ The art of designing environments where AI agents work well — 11 skills coveri
 |-------|-------------|---------|
 | **check-harness** | Diagnose harness maturity via 6-axis / 24-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents. | `/harness-ops:check-harness` |
 | **scaffold** | Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context | `/harness-ops:scaffold` |
-| **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md) | `/harness-ops:specify "goal"` |
+| **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md). **Additive `mode: batch`** path (driven by `decompose`) skips only the human approval prompts — L1–L4 derivation and the per-spec L2-reviewer still run; a bare `/specify` is byte-unchanged. | `/harness-ops:specify "goal"` |
+| **decompose** | One project goal → **N coherent, sibling-aware** `specs/<feature>/spec.md`. Proposes a *partition* (disjoint declared-surface globs + `depends_on` + shared decisions made once), concentrates judgment at **one** human gate (Approve/Revise/Abort), drives `specify` in `mode: batch` per feature, then runs `coherence-audit` on its own output (maker≠checker). Reuses specify — never reimplements it. | `/harness-ops:decompose "goal"` |
+| **coherence-audit** | Independently check a **set** of specs for cross-spec incoherence: **overlap** (deterministic, `depends_on`-gated glob set-intersection), **contradiction** (a *separate* judge subagent over shared-surface `## Decisions`), **redundancy** (advisory). Reads spec files only (maker≠checker); emits `coherence-report.md` + one `BLOCK \| WARN \| OK` verdict. **Flag-only** — never rewrites a spec. Runs standalone, in build-order's Plan, and at decompose-end. | `/harness-ops:coherence-audit [specs]` |
 | **requirements-interview** | Socratic requirements interview — clarifies ambiguous goals through structured questioning | `/harness-ops:requirements-interview "topic"` |
 | **qa** | Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report | `/harness-ops:qa [target]` |
 | **context-audit** | Audit all context documents Claude loads (CLAUDE.md, MEMORY.md, skills, agents, plugins) for outdated claims, contradictions, and risky wording | `/harness-ops:context-audit` |
 | **agent-orchestrate** | Analyze a task and execute the optimal orchestration pattern (sequential / parallel / team / ralph-loop) | `/harness-ops:agent-orchestrate "task"` |
 | **loop** | Run a task as a supervised verification loop — establishes a 3-gate contract (Pass/Fail · Quantitative · Qualitative), iterates Work→Verify→Fix until gates pass, emits an evidence report, and escalates at autonomy boundaries (schema / migration / auth / payment / spec conflict). **Resumable across compaction**: run-state persists to `progress.md`, so the anti-spin counter and progress survive a compact and a long/unattended run picks up where it left off. **Compounds across runs**: self-learning `## Lessons` (reloaded each run, recorded on failure), maker≠checker Gate 3 (a separate subagent scores the qualitative gate), and an opt-in scheduled heartbeat | `/harness-ops:loop "task"` |
-| **build-order** | Orchestrate **many** feature specs through `loop` as one resumable build — generates a topological `build_order.md` ledger, drives each ready feature via `/loop` (verify-first, so already-built features pass without rework), advances on green and **parks-and-continues** independent features on escalation. The durable ledger survives context compaction. | `/harness-ops:build-order [specs glob\|resume]` |
+| **build-order** | Orchestrate **many** feature specs through `loop` as one resumable build — generates a topological `build_order.md` ledger, drives each ready feature via `/loop` (verify-first, so already-built features pass without rework), advances on green and **parks-and-continues** independent features on escalation. The durable ledger survives context compaction. Now calls **`coherence-audit`** at the end of Plan, so a cross-spec **BLOCK** surfaces at the existing batch-approval and can't slip into an unattended run. | `/harness-ops:build-order [specs glob\|resume]` |
 | **autopilot** | Run a `build-order` **unattended** (overnight) — a safety-governor + scheduler (ScheduleWakeup primary + durable cron backstop) that ticks build-order with **six hard limits** (wall-clock · max-tick · consecutive-park · per-tick-timeout · crash-loop · kill-switch) and halts safely. **Never drives a live session** (no tmux / `/compact` injection); resumable across session death. | `/harness-ops:autopilot [start\|status\|stop]` |
 | **worktree** | Create / list / remove isolated git worktrees so you can run independent parallel Claude Code sessions on separate branches without interference | `/harness-ops:worktree [create\|list\|remove]` |
 | **generate-team** | Design and build an agent team architecture — delegates to the `harness-factory` plugin (must be installed separately) | `/harness-ops:generate-team [description]` |
@@ -56,6 +58,12 @@ claude plugin install harness-ops@harness-ops-marketplace
 
 # Turn a goal into a full implementation plan
 /harness-ops:specify "implement user authentication"
+
+# Decompose ONE goal into N coherent, sibling-aware specs (then feed to build-order)
+/harness-ops:decompose "multi-tenant billing: auth, metering, invoicing"
+
+# Independently audit an existing spec set for overlap / contradiction before a build
+/harness-ops:coherence-audit specs/
 
 # QA test a running app
 /harness-ops:qa http://localhost:3000
@@ -107,11 +115,30 @@ Three layers compose into a pipeline that can build a multi-feature project **un
 
 The three layers nest: `autopilot.md` (which tick) ⊃ `build_order.md` (which feature) ⊃ `loop.md` + `progress.md` (where inside that feature). Everything is opt-in and additive — use `loop` alone for one feature, add `build-order` for many, add `autopilot` to run them unattended.
 
+## Spec-set coherence: `decompose` + `coherence-audit`
+
+The night-loop stack *builds* a set of specs; these two skills make sure the set is **coherent before the build starts**. When you author many sibling specs for a `build-order` / `autopilot` run, each `/specify` is blind to its siblings — so two specs can silently **overlap** (own the same files) or **contradict** (opposite decisions on a shared surface). Two skills close that gap, both by construction and by independent check:
+
+- **`decompose` (the maker)** — one project goal → **N** coherent `specs/<feature>/spec.md`. It proposes a *partition* (split the goal into features that each own a **disjoint** declared-surface of path globs, wired with `depends_on` edges + shared decisions made **once** for the set), concentrates all human judgment at **one** partition gate (Approve / Revise / Abort), then drives `specify` in `mode: batch` to elaborate each spec. As its final step it runs `coherence-audit` on its own output (maker ≠ checker). It **reuses** specify — `decompose : specify ∷ build-order : loop` — and never auto-resolves a conflict (it flags it to you).
+- **`coherence-audit` (the independent checker)** — reads spec **files only** (never the decomposer's reasoning) and flags three things: **overlap** (deterministic glob set-intersection, **gated by `depends_on`** so legitimate ordered extension isn't flagged — only *unordered* sharing is), **contradiction** (a **separate judge subagent** classifies shared-surface `## Decisions` as incompatible vs complementary), and **redundancy** (advisory). It emits a `coherence-report.md` and one machine-readable verdict — **`BLOCK | WARN | OK`** — that a caller branches on. It is **flag-only**: it never rewrites a spec ("never push through the fence").
+
+The two share one data contract — the **declared surface** (`## Declared Surface`: owned path globs + `depends_on`) that `decompose` *emits* and `coherence-audit` *consumes* — which is what makes overlap detection deterministic. The checker runs at **three points**: standalone on any spec set, at **decompose-end** (so even the front-door path is independently checked), and inside **build-order's Plan** (so a cross-spec `BLOCK` surfaces at the existing batch-approval and a known collision can't slip into an unattended run). Severity is tiered for unattended safety: a contradiction or an **unordered overlap BLOCKS** (it never degrades to an unread WARN), while redundancy / undeclared surfaces only WARN.
+
+Everything is additive and opt-in: `specify` gains only the `mode: batch` path (a bare `/specify` is byte-unchanged), `build-order` gains only a single `coherence-audit` call (its gating logic is untouched), and `loop` / `autopilot` are unchanged.
+
+```
+[goal]  /decompose  →  partition (1 human gate)  →  specify mode:batch × N  →  coherence-audit
+                                                                                     │ BLOCK│WARN│OK
+[existing specs]  /coherence-audit  ───────────────────────────────────────────────┘
+                                                                                     ↓
+                                                  /build-order  (re-audits at Plan)  →  night-loop stack
+```
+
 ## Usage with Gemini CLI
 
 The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads the `harness-ops/` subdirectory name as the namespace prefix, registering skills as `/harness-ops:skill-name`.
 
-> **Note:** the Gemini `.toml` files **embed a copy** of each skill's `SKILL.md`, so they must be regenerated when a skill changes. The newest work is **Claude Code first**: `build-order` and `autopilot` have no `.toml` yet, and `loop.toml` does not yet include the latest resumability / pre-approval additions. Gemini CLI therefore exposes the original 9 skills — regenerate the toml files to bring the new capabilities to Gemini.
+> **Note:** the Gemini `.toml` files **embed a copy** of each skill's `SKILL.md`, so they must be regenerated when a skill changes. The newest work is **Claude Code first**: `build-order`, `autopilot`, `decompose`, and `coherence-audit` have no `.toml` yet, and `loop.toml` / `specify.toml` do not yet include the latest additions (resumability / pre-approval / `mode: batch`). Gemini CLI therefore exposes the original 9 skills — regenerate the toml files to bring the new capabilities to Gemini.
 
 ### Quick Start
 
@@ -158,6 +185,8 @@ commands/               # Slash commands — one .md per skill
   check-harness.md
   scaffold.md
   specify.md
+  decompose.md
+  coherence-audit.md
   requirements-interview.md
   context-audit.md
   agent-orchestrate.md
@@ -170,6 +199,8 @@ skills/                 # Skill implementations
   check-harness/SKILL.md
   scaffold/SKILL.md
   specify/SKILL.md
+  decompose/SKILL.md
+  coherence-audit/SKILL.md
   requirements-interview/SKILL.md
   qa/SKILL.md
   context-audit/SKILL.md

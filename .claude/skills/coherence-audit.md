@@ -1,0 +1,1 @@
+../../skills/coherence-audit/SKILL.md

@@ -50,6 +50,12 @@ Write tool → {specDir}/spec.md
 
 User confirms mirror → advance to L1. No reviewer.
 
+**Batch-mode bypass (additive, opt-in — see specify `SKILL.md` › `## Batch Mode`):**
+if invoked with `mode: batch` AND the feature's partition-manifest entry carries
+`pre-approved-batch: yes`, SKIP this mirror `AskUserQuestion` and advance to L1 with
+the goal derived from the partition context (the human already owns the bar via
+decompose's ONE partition gate). A bare invocation with no marker is unchanged.
+
 ---
 
 ## L1: Context Research
