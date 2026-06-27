@@ -135,6 +135,19 @@ batch (and is the thing a resume reconciles against — see Phase 4).
   + spec paths) for later reconcile.
 - Write via **temp file + rename** so a crash mid-write can't leave a torn ledger.
 
+### 5. Audit cross-spec coherence (call `coherence-audit`)
+The final step of Plan — after the set is classified, before Approve: hand the classified spec set to
+the standalone checker. `build-order` only **invokes** it and **reads its verdict**; it reimplements
+no checking logic (the audit lives entirely in `coherence-audit` — maker ≠ checker stays there).
+- Call `Skill(skill="harness-ops:coherence-audit", args="<the classified spec.md paths | the specs dir>")`
+  on the just-classified set (the `pending` features' `spec` paths).
+- It writes a `coherence-report.md` carrying a `verdict: BLOCK | WARN | OK` header line. **Read that
+  verdict from the report file** — a deterministic file signal, the same "read outcomes from file
+  signals, not returned text" rule used in Drive — and carry it (with the report's findings) into the
+  Phase-2 Approve below. `BLOCK` = ≥1 block-tier finding (a contradiction OR an unordered overlap).
+- This step is flag-only: it resolves nothing and rewrites no spec — it only surfaces the verdict to
+  the human at the existing Approve.
+
 The plan is now drafted but **not yet runnable** — it must be approved (Phase 2) before any work.
 
 ---
@@ -158,9 +171,18 @@ here. (That is the R7.2 line: `build-order` prepares and sequences; loop verifie
 Show the human, together:
 - the `build_order.md` plan — features, topological order, `depends_on`, and any `parked: no-spec`;
 - each feature's drafted `loop.md` gates.
+- the **`coherence-audit` verdict + findings** from `coherence-report.md` (Phase 1 step 5) — each
+  block-tier conflict (a contradiction or an unordered overlap) and each warn-tier note (redundancy /
+  undeclared surface), surfaced at this **existing** approval (no separate gate is added).
 
 Ask for a single approval covering the whole plan **and** all the gate contracts. The human owns
 the bar — for the whole batch, up front.
+
+**A `BLOCK` coherence verdict prevents an unattended run from proceeding unapproved.** In a
+pre-batched / autopilot path the approval was given up front and no human is reading a warning at
+Phase 2, so a known cross-spec collision or contradiction must **hard-stop** the unattended run — it
+cannot proceed until a human has seen and resolved the block-tier finding. A `WARN` verdict is
+surfaced but non-blocking; an `OK` verdict adds nothing to resolve.
 
 **Pre-mark already-built features `done` (optional optimization).** On a brownfield project the human
 may flip features that are already complete to `status: done` here, so they are skipped entirely (no

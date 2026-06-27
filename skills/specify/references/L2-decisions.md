@@ -322,6 +322,15 @@ Return: PASS or NEEDS_FIX with specific issues.
 - **PASS** → present AskUserQuestion (Approve/Revise/Abort) to user
 - **NEEDS_FIX** → address issues (add checkpoints, re-interview, clarify decisions), then re-run reviewer (max 2 retries)
 
+**Batch-mode bypass (additive, opt-in — see specify `SKILL.md` › `## Batch Mode`):**
+if invoked with `mode: batch` AND the feature's partition-manifest entry carries
+`pre-approved-batch: yes`, the **L2-reviewer subagent STILL runs** (it is a checker,
+not a human prompt — specify's within-spec maker ≠ checker is preserved); only the
+**PASS → `AskUserQuestion`** human approval is SKIPPED. On a batch PASS, advance to L3
+with the derived decisions; a NEEDS_FIX is still addressed and re-reviewed exactly as
+above. (`coherence-audit` is a cross-spec checker and does NOT replace this within-spec
+review.) A bare invocation with no marker is unchanged.
+
 ### L2 Gate
 
 Read spec.md and verify:
