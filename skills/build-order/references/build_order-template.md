@@ -7,6 +7,9 @@
 
 - generated_at: <stamp — set by the caller>
 - input_ref: <fingerprint of the input spec set — Goal lines + spec paths>
+- build_branch: build/<batch>    # non-main run-branch per-feature commits land on (commit_on_green only)
+- base_ref: <sha>                # HEAD the run-branch forked from (set at Approve)
+- commit_on_green: true          # true = commit each green feature on build_branch (+push, non-main); false = no git writes
 
 ## Features  (topological order — a dependency must appear before its dependents)
 
@@ -16,6 +19,8 @@
 - status: pending                # pending | in-progress | done | parked
 - reason: —                      # escalated | no-spec | error  (only when parked)
 - accept: <one-line acceptance seed — what "done" means for this feature>
+- commit: —                      # <sha> | none | FAILED:<reason> — set on a green commit (commit_on_green)
+- pushed: false                  # whether build_branch was pushed after this feature's commit
 
 ### <feature-id-2>
 - spec: <path/to/specs/<feature-2>/spec.md>
@@ -23,6 +28,8 @@
 - status: pending
 - reason: —
 - accept: <...>
+- commit: —
+- pushed: false
 
 <!--
 Notes:
@@ -31,4 +38,9 @@ Notes:
 - `parked` is sticky: only a human edits it back to `pending` after fixing the cause.
 - On resume, the skill reconciles this ledger against the current spec set (additive
   changes auto-merge; structural changes require re-approval).
+- commit_on_green: when true, each green feature is committed on the non-main `build_branch`
+  and that branch may be pushed (never main, never force, never merged) — one commit per
+  feature, the merge left to the human. `commit` / `pushed` are idempotency keys on resume.
+  A no-surface feature that parks may have its dirty tree stashed (a `parked_stash: <ref>`
+  field is then added on that feature only). Set commit_on_green:false for zero git writes.
 -->

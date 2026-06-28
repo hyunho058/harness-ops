@@ -6,13 +6,16 @@ description: |
   unattended, resumable "build order". Generates a topologically-ordered
   build_order.md ledger from a set of feature specs, then drives each ready feature
   through /loop one at a time — advancing on a green exit and PARKING (while
-  continuing independent features) on an escalation. The durable build_order.md
+  continuing independent features) on an escalation. On a green exit it can also
+  COMMIT that one feature on a non-main run-branch (push optional; never merges) —
+  one clean commit per feature, the merge left to the human. The durable build_order.md
   ledger makes the whole multi-feature run resumable across context compaction: it
   is the OUTER analogue of loop's progress.md. Reuses the loop skill for ALL gating
   and verification — it never reimplements gates, maker≠checker, or lessons.
   Use when: "/build-order", "build order", "build all the specs", "run the specs
   overnight", "orchestrate multiple features", "unattended multi-feature build",
-  "build_order.md", "drive these specs through the loop", "park and continue".
+  "build_order.md", "drive these specs through the loop", "park and continue",
+  "commit each feature", "per-feature commit".
   Do NOT trigger for: a single feature/spec (use /harness-ops:loop directly), or
   choosing an execution pattern for one task (use /agent-orchestrate).
 allowed-tools:
@@ -75,6 +78,9 @@ beside the `specs/` it orchestrates.
 # build_order.md — <project / batch name>
 - generated_at: <when>            # stamp, set by the caller
 - input_ref: <fingerprint of the input spec set>   # for reconcile (see Resume)
+- build_branch: build/<batch>     # non-main run-branch per-feature commits land on (commit_on_green only)
+- base_ref: <sha>                 # HEAD the run-branch forked from
+- commit_on_green: true           # true = commit each green feature on build_branch (+push, non-main); false = no git writes
 
 ## Features  (topological order)
 ### <feature-id>
@@ -83,6 +89,9 @@ beside the `specs/` it orchestrates.
 - status: pending | in-progress | done | parked
 - reason: escalated | no-spec | error          # only when status = parked
 - accept: <one-line acceptance seed for this feature>
+- commit: <sha> | none | FAILED:<reason>        # set on a green commit (idempotency key); none = nothing to commit
+- pushed: true | false                          # whether build_branch was pushed after this feature's commit
+- parked_stash: <ref>                            # only when a no-surface feature parked and its tree was stashed
 ```
 
 **Status semantics:**
@@ -195,6 +204,10 @@ passed gate, sets `done`.
 - Write each approved `loop.md` into its feature's spec directory (so the loop finds an
   already-approved contract there).
 - Mark `build_order.md` approved (record `generated_at` / approver).
+- **Arm the run-branch** (when `commit_on_green`) — record `base_ref = HEAD`, then
+  `git switch -c build/<batch>` and record `build_branch`. Every per-feature commit lands on this
+  non-`main` branch; if currently on `main`, this forks off it and never commits to `main`. See
+  "Commit-on-green".
 - This batch approval **is** the pre-approval that Phase 3 passes to each `/loop` via the
   `mode: unattended` marker: loop's Phase 0 then sees an approved `loop.md` + that marker and
   **skips its own `AskUserQuestion`** (R6) — while still running every gate.
@@ -221,6 +234,7 @@ loop:
      ELSE (unfinished remain, all blocked) → DEADLOCK  (see below)
   feature = pick ONE from ready, deterministically: topological order, then build_order.md
             declared order  (so a resumed run picks the same "current" feature)
+  IF commit_on_green: ensure HEAD == build_branch (else `git switch` to it)  # before the loop edits the tree
   set feature.status = in-progress   and FLUSH build_order.md atomically  # BEFORE the loop call
   outcome = drive(feature)                                                 # invoke /loop, read signals
   record(outcome); FLUSH build_order.md atomically
@@ -252,9 +266,9 @@ loop:
 
 | outcome | ledger | side effect |
 |---------|--------|-------------|
-| **green** | `status: done` | advance to the next ready feature |
-| **escalated** | `status: parked, reason: escalated` | `PushNotification`; continue with features not transitively depending on it |
-| **loop call itself errored** | `status: parked, reason: error` | `PushNotification`; continue (distinct from escalated, so morning triage tells a tooling failure from a real boundary) |
+| **green** | `status: done`, then `commit: <sha\|none>` + `pushed` | **commit-on-green**: stage this feature, commit on `build_branch`, push non-`main` (see "Commit-on-green"); advance to the next ready feature |
+| **escalated** | `status: parked, reason: escalated` | `PushNotification`; **no commit**; continue with features not transitively depending on it |
+| **loop call itself errored** | `status: parked, reason: error` | `PushNotification`; **no commit**; continue (distinct from escalated, so morning triage tells a tooling failure from a real boundary) |
 
 **Parked is sticky.** A `parked` feature is never auto-retried — it stays parked until a human edits
 it back to `pending` (after fixing the cause). The cycle simply stops treating it as available.
@@ -269,15 +283,90 @@ features before stopping.
 
 ---
 
+## Commit-on-green — one commit per finished feature (additive)
+
+When `commit_on_green: true` (the default), each feature that exits `green` is committed **on its own**
+to the non-`main` **run-branch**, so an unattended run leaves a clean per-feature history a human can
+review and merge. This is the **only** place `build-order` writes git, and it stays strictly behind
+loop's fence: it **commits and may push, but never merges, never touches `main`, never force-pushes**.
+Set `commit_on_green: false` to disable it entirely — the run then makes **zero** git writes, behaving
+byte-for-byte as before.
+
+### The run-branch (created once, at Approve)
+- On approval (Phase 2 step 3): record `base_ref = HEAD`, `git switch -c build/<batch>`, record
+  `build_branch`. All commits land here; `main` is never committed to.
+- **Before every feature's loop call** — at each Drive-cycle iteration (in-session) and each autopilot
+  tick entry, and **FIRST on resume** (Phase 4 step 2, before any loop re-invocation) — assert `HEAD`
+  is `build_branch`, else `git switch` to it, so the loop's edits always land on the run-branch.
+  autopilot's single-flight lock means only one tick is ever on the branch at a time, so the sequential
+  one-commit-per-feature order is deterministic.
+
+### Commit procedure (Phase 3, on a `green` outcome)
+Record the commit in the ledger **immediately after** `git commit`, so a compact between commit and
+flush stays recoverable (see Resume):
+
+1. **Stage — surface-scoped when possible.**
+   - Feature has a `## Declared Surface` (from `decompose`) → `git add` **only** those globs. Because
+     decompose guarantees **disjoint** surfaces, this auto-excludes any sibling/parked feature's dirty
+     files — isolation for free, no stash needed.
+   - No declared surface (hand-written spec) → require a **clean tree at the feature's start**, then
+     `git add -A` (sequential drive makes the delta-since-last-commit exactly this feature's work). If
+     the tree is dirty at start, **don't guess** — escalate rather than risk cross-feature contamination.
+2. **Surface-drift check.** If files changed **outside** the declared surface remain, do not silently
+   sweep them in — surface them (a coherence signal) and commit only the owned surface. (Drift left
+   dirty doesn't affect a later *declared-surface* feature — it stages only its own globs — but a later
+   *no-surface* feature would escalate on it; resolve drift promptly.)
+3. **No-op skip.** Nothing staged (a brownfield feature verified `green` with a zero diff) → make **no
+   empty commit**; record `commit: none` and advance.
+4. **Commit.** `git commit` with a message derived from the spec:
+   ```
+   feat(<feature-id>): <accept seed>
+
+   <spec path · the gates this feature passed>
+
+   Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+   ```
+   Read `<sha> = git rev-parse HEAD` and **flush** `commit: <sha>` to the ledger atomically.
+5. **Push — non-`main`, non-fatal.** `git push -u origin <build_branch>` (first push; `git push`
+   after) and set `pushed: true`. **Never `main`, never `--force`, never a merge.** A push failure
+   (offline / no creds) is **logged, `pushed: false`, and the run continues** — the local commit is
+   safe and re-pushed on a later tick. `block-main-push` is never in play (the branch is not `main`).
+
+### Parked / escalated features are never committed
+A feature that parks (`escalated` / `error`) is **not** committed. With disjoint surfaces its dirty
+files are simply excluded from later commits; in the no-surface fallback its changes are stashed
+(`git stash push -u -m "parked:<id>"`, recorded as `parked_stash`) so the tree is clean for the next
+feature, and restored when the human un-parks it.
+
+### Commit failure
+A failed `git commit` (e.g. a pre-commit hook rejects it) records `commit: FAILED:<reason>` and fires a
+`PushNotification`. The feature **stays `done`** — a commit-tooling failure never un-does a verified
+green; the human resolves the commit and the gate result stands.
+
+---
+
 ## Phase 4 — Resume & Reconcile
 
 A multi-hour unattended run **will** be compacted. `build_order.md` is what makes that survivable: on
 resume, re-read it instead of re-planning.
 
-### Resume — two levels
+### Resume — branch-first, then recover
 1. **Re-read `build_order.md`** — it already records which features are `done` / `parked` /
    `in-progress`, and the ready set is recomputed. No re-plan.
-2. **Recover the `in-progress` feature** (drive is sequential, so there is at most one):
+2. **Re-assert the run-branch FIRST** (when `commit_on_green`) — `git switch` to `build_branch` if not
+   already on it, **before any loop re-invocation**, so recovered work edits the correct branch. This is
+   the "assert on resume" the run-branch section promises; it must precede step 4's loop call.
+3. **Reconcile committed features** — for each feature `done` with an empty `commit`:
+   - its surface is **dirty** → commit it now via the **Commit procedure** above (same surface-scoped
+     staging — not a blind `git add -A`);
+   - its surface is **clean** → resolve the ambiguity by **matching**: look for a commit since
+     `base_ref` whose subject is `feat(<feature-id>):`. **Found** → record that `<sha>`. **Not found** →
+     it was a zero-diff no-op → record `commit: none` (never attribute another feature's sha).
+   A feature whose `commit` is already set is **skipped** (no double-commit) — including
+   `FAILED:<reason>`, which is left for the human and **not auto-retried** (a re-attempt hits the same
+   rejection). Any `pushed: false` is re-pushed (non-fatal). Idempotent by the `commit` / `pushed` keys.
+4. **Recover the `in-progress` feature** (drive is sequential, so there is at most one) — now safely on
+   `build_branch`:
    - it has a `progress.md` → re-invoke its `/loop`; the loop resumes *within* the feature via ①'s
      `progress.md` (iteration, anti_spin, …). `build-order` records only **which** feature is current;
      the *where-inside* belongs to the loop.
@@ -286,7 +375,7 @@ resume, re-read it instead of re-planning.
      **re-invoke the loop from scratch**. Idempotent: loop's own Phase-0 absent-progress path just
      starts it. (This is why `in-progress` is flushed *atomically before* the loop call — the handoff
      is always recoverable.)
-3. Continue the Phase-3 cycle normally.
+5. Continue the Phase-3 cycle normally.
 
 ### Reconcile — the input spec set changed since approval
 Compare the current spec set against `build_order.md`'s `input_ref`:
@@ -320,3 +409,8 @@ Compare the current spec set against `build_order.md`'s `input_ref`:
    approved ledger.
 9. **Never push through the fence** — a feature's loop escalation parks that feature and surfaces it;
    `build-order` continues with independents but never overrides the loop's autonomy boundary.
+10. **Commit-on-green stays behind the fence** — when enabled, a `green` feature is committed on the
+    non-`main` `build_branch` (which may be pushed: never `main`, never `--force`, never merged);
+    parked/escalated features are never committed; a failed commit/push is surfaced, never silently
+    swallowed, and never un-does a green. The merge stays with the human. `commit_on_green: false`
+    restores the prior behavior byte-for-byte.
