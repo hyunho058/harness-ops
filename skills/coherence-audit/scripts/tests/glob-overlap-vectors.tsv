@@ -1,0 +1,95 @@
+# glob-overlap-vectors.tsv — executable form of the overlap contract
+#
+# Run with:   bash skills/coherence-audit/scripts/run-tests.sh
+#
+# TAB-separated, five columns. Blank lines and `#` lines are ignored.
+#
+#   1 expect    `yes` = surfaces intersect (exit 1) | `no` = disjoint (exit 0)
+#   2 surfaceA  the globs of surface A, separated by `;` (one per line in the
+#               file handed to the script). `(none)` = an empty surface file.
+#               An empty element (`a;;b`) becomes a blank line.
+#   3 surfaceB  same, for surface B
+#   4 evidence  the EXACT expected stdout: pairs separated by `;`, each pair
+#               written `<globA>><globB>` (the `>` stands for the TAB the script
+#               emits). `-` on a `no` row = not applicable; stdout must be empty.
+#               Evidence carries the NORMALIZED glob, not the raw input line.
+#   5 desc      what this row pins down
+#
+# NO FIELD MAY BE EMPTY (adjacent tabs collapse during shell field splitting) —
+# use `(none)` or `-`.
+#
+# Exit-code-2 misuse, CRLF tolerance, and the entry-digest contract are not
+# expressible here; run-tests.sh checks those directly.
+
+# ---------------------------------------------------------------------------
+# declared-surface-schema.md §1 truth table — all seven rows, verbatim
+# ---------------------------------------------------------------------------
+yes	app.py	app.py	app.py>app.py	§1 row 1 — identical
+yes	src/auth/**	src/auth/login.py	src/auth/**>src/auth/login.py	§1 row 2 — B is under A subtree
+yes	src/**	src/auth/**	src/**>src/auth/**	§1 row 3 — A subtree contains B
+yes	src/**/util.py	src/auth/util.py	src/**/util.py>src/auth/util.py	§1 row 4 — ** resolves to auth
+no	src/auth/**	src/api/**	-	§1 row 5 — disjoint subtrees
+no	src/*.py	src/auth/login.py	-	§1 row 6 — * is one segment, B has an extra one
+no	app.py	app.js	-	§1 row 7 — distinct literals
+
+# ---------------------------------------------------------------------------
+# Normalization — omitted by the truth table, required by R6.5
+# ---------------------------------------------------------------------------
+yes	./x	x	x>x	normalization — leading ./ stripped
+yes	a//b	a/b	a/b>a/b	normalization — // collapsed to /
+yes	/src/app.py	src/app.py	src/app.py>src/app.py	normalization — leading / stripped
+yes	src/./auth/**	src/auth/login.py	src/auth/**>src/auth/login.py	normalization — interior ./ stripped
+yes	.///src//./auth/**	src/auth/login.py	src/auth/**>src/auth/login.py	normalization — all rules at once
+yes	src/auth/	src/auth	src/auth>src/auth	normalization — trailing / dropped
+no	./src/api/**	/src/auth/**	-	normalization does not manufacture an overlap
+yes	# a comment;;src/auth/**	src/auth/login.py	src/auth/**>src/auth/login.py	blank and # comment lines ignored
+yes	app.py;app.py	app.py	app.py>app.py	duplicate globs in one surface yield one evidence line
+yes	./app.py;app.py	app.py	app.py>app.py	dedupe happens AFTER normalization
+
+# ---------------------------------------------------------------------------
+# `?` — exactly one char, within one segment
+# ---------------------------------------------------------------------------
+yes	src/a?.py	src/ab.py	src/a?.py>src/ab.py	? matches exactly one char
+no	src/a?.py	src/abc.py	-	? does not match two chars
+no	src/?.py	src/ab.py	-	? is one char, not a run
+yes	src/a?c	src/a*c	src/a?c>src/a*c	? unifies against * on the other side
+no	src/a?b	src/a/b	-	? never crosses a /
+
+# ---------------------------------------------------------------------------
+# `*` — a run of chars, within one segment
+# ---------------------------------------------------------------------------
+no	src/*	src/a/b	-	* never crosses a /
+yes	src/*	src/anything	src/*>src/anything	* matches a whole segment
+yes	src/*.py	src/app.py	src/*.py>src/app.py	* matches a run inside a segment
+no	src/*.py	src/app.js	-	the literal tail must still unify
+yes	a*c	abc	a*c>abc	* matches a non-empty run
+yes	a*c	ac	a*c>ac	* matches zero chars
+no	*.py	*.js	-	two * patterns with incompatible tails
+yes	*.py	src*	*.py>src*	two * patterns unify on `src.py`
+
+# ---------------------------------------------------------------------------
+# `**` — zero or more WHOLE segments (the zero-segment cases R6.5 names)
+# ---------------------------------------------------------------------------
+yes	a/**	a	a/**>a	zero-segment ** — a/** owns `a` itself
+yes	**	src/auth/login.py	**>src/auth/login.py	** matches any path
+yes	**	app.py	**>app.py	** matches a top-level file
+yes	a/**/b	a/b	a/**/b>a/b	zero-segment ** in the middle
+yes	**/b	b	**/b>b	leading ** matching zero segments
+yes	**	**	**>**	** against **
+no	a/**/b	a/c	-	** cannot repair a mismatched tail
+no	a/**	b/**	-	** cannot escape its own root
+yes	**/util.py	src/a/b/c/util.py	**/util.py>src/a/b/c/util.py	** spans many segments
+yes	src/**/util.py	src/**/auth/util.py	src/**/util.py>src/**/auth/util.py	two-sided ** unification (both sides wildcard)
+no	src/**/util.py	src/**/auth/util.js	-	two-sided ** with distinct tails
+yes	src/**/a/**	src/**/b/**/a/x	src/**/a/**>src/**/b/**/a/x	two-sided ** with backtracking
+
+# ---------------------------------------------------------------------------
+# Set-vs-set — the script unit is the SURFACE, every table row above is
+# glob-to-glob (R6.5 / the spec Open observation)
+# ---------------------------------------------------------------------------
+yes	src/auth/**;docs/**	src/api/**;docs/readme.md	docs/**>docs/readme.md	set-vs-set — exactly one of four pairs intersects
+no	src/auth/**;app.py	src/api/**;app.js	-	set-vs-set — 2x2 fully disjoint
+yes	src/**;src/auth/**	src/auth/login.py	src/**>src/auth/login.py;src/auth/**>src/auth/login.py	set-vs-set — two evidence lines, A-major order
+yes	a/**;b/**;c/**	z/**;b/x.py;y/**	b/**>b/x.py	set-vs-set — 3x3, one intersecting pair
+no	(none)	src/auth/**	-	an empty surface is disjoint from everything
+no	(none)	(none)	-	two empty surfaces are disjoint
