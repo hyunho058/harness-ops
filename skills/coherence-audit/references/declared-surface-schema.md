@@ -49,6 +49,52 @@ Field semantics:
   the heading is what the "declared vs undeclared" check (D8) keys on; the field is what
   the overlap check (R2.2) reads.
 
+### Provenance marker — line 1 of the spec, machine-owned  (D20)
+
+Every `decompose`-generated `spec.md` carries a provenance marker as its **first line**,
+ahead of the `# Spec:` heading. (These specs carry no frontmatter, so line 1 is the analogue
+of a post-frontmatter placement.)
+
+```markdown
+<!-- decompose-entry: auth @ sha256:<64 lowercase hex chars> -->
+# Spec: auth
+```
+
+| Token | Form | Meaning |
+|-------|------|---------|
+| `decompose-entry` marker | HTML comment on line 1 | Records **which** manifest entry produced this spec and **what that entry hashed to**, so a later run can tell "the SOURCE changed" apart from "the HUMAN edited the artifact" — a single two-way comparison cannot attribute a difference to one side. |
+
+- **`decompose` writes it, never `specify`.** decompose stamps the marker immediately after
+  the per-feature `specify` call returns, and only then flips that manifest entry's `state:`
+  to `generated`. These are two files, so no single atomic write covers both; each write is
+  individually atomic and **the order is fixed — stamp the spec first, flip the manifest
+  second**. Both crash orders are then safe: a crash after stamping leaves `state: pending`,
+  so the feature regenerates and is re-stamped; a crash after the flip cannot happen before
+  the stamp exists.
+- **The digest covers human-owned fields ONLY** — `feature-id`, `declared-surface`,
+  `depends_on`, `accept-seed` — and **excludes `state:` and `pre-approved-batch:`**, which
+  the machine flips on every normal run. Hashing those would make every entry read as
+  "changed" on the next resume and turn a cheap resume into a full re-gate.
+- **One shared implementation computes it on both sides:**
+  `${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/entry-digest.sh <manifest> <feature-id>`,
+  which prints the bare lowercase hex sha256. The stamping side and the verifying side call
+  the same script, so — **when both invoke it** — a producer and a verifier cannot disagree
+  about bytes nobody changed. Normalization (canonical field order, sorted glob and `depends_on` lists,
+  collapsed whitespace, LF line endings) is documented in that script's header and is part of
+  the contract. Note it does **not** path-normalize globs — a cosmetic `./src/x` → `src/x`
+  edit does change the digest and reads as drift, deliberately erring toward more re-gating,
+  never less.
+- **It is machine-owned metadata, not spec content.** Every consumer must treat it as such:
+  it is not part of any `## Decisions`, requirement, or prose that a reader or a judge
+  evaluates; it is excluded from body preservation on an in-place structural merge; and it is
+  re-stamped on every regeneration or merge.
+- **An absent marker means a pre-marker spec, not a stalled run.** Sets generated before this
+  contract carry no marker, so a resume compares only the structural fields the spec does
+  carry (`declared-surface`, `depends_on`) against the entry — equal → unchanged, differ →
+  changed — and **stamps the current digest either way**, so every later run is
+  marker-driven. That one-time migration compare cannot see `accept-seed` drift; this is an
+  accepted one-time blind spot, not a permanent one.
+
 ### Undeclared default (D8) — absence WARNS, never hard-blocks
 
 A spec is **surface undeclared** iff it has **no `## Declared Surface` section** OR its
@@ -73,10 +119,12 @@ A directory is owned by writing an explicit `/**` suffix (decompose always emits
 bare path with no wildcard matches that one path only.
 
 **Wildcards.**
-- `*` — any run of chars **within one segment** (does not cross `/`).
-- `?` — a single char within one segment.
+- `*` — **zero or more** chars **within one segment** (does not cross `/`). So `a*c`
+  matches `ac` as well as `abc`.
+- `?` — **exactly one** char within one segment.
 - `**` — **zero or more whole segments** (crosses `/`); valid only as a full segment
-  (`a/**`, `a/**/b`, `**/b`, `**`).
+  (`a/**`, `a/**/b`, `**/b`, `**`). Because zero segments is legal, `a/**` owns `a` itself.
+  A `**` that is not a whole segment (`a/x**y/b`) is **invalid input**, not a literal.
 
 **Two globs OVERLAP** iff at least one concrete repo path is matched by BOTH (segment-wise
 unification: literal≡literal; `*`/`?` unify one segment; `**` unifies zero-or-more segments
@@ -92,6 +140,61 @@ glob in set B; the overlap evidence is the specific `(globA, globB)` pair(s).
 | `src/auth/**` | `src/api/**` | no | disjoint subtrees |
 | `src/*.py` | `src/auth/login.py` | no | `*` is one segment; B has an extra segment |
 | `app.py` | `app.js` | no | distinct literals |
+
+### The normative implementation of this section (D7, D11, D13)
+
+The prose above and the table are **implemented once**, at
+`${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/glob-overlap.sh`. Both callers —
+`decompose`'s step-3 pre-flight and `coherence-audit`'s overlap tier — invoke that script
+rather than judging overlap in prose, so **when both invoke it** the two cannot disagree about
+the same pair. The table above ships as its test vectors, so a divergence between this prose
+and the script surfaces as a **failing test** rather than silently — provided a human runs the
+suite, since this repo has no CI. Run it with:
+
+```
+bash ${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/run-tests.sh
+```
+
+**What extraction does NOT buy — enforcement (D7, Known Gap 1).** Single-sourcing the algorithm
+makes it **testable**; it does **not** make it **enforced**. Nothing in this harness detects a
+skipped invocation: "call the script" is itself an instruction an LLM may skip, exactly as
+"compute this deterministically" was skipped before. Extraction therefore **relocates** the
+non-determinism — from *how the intersection is computed* to *whether the script is run at all* —
+rather than removing it, and it does so at the same (zero) enforcement. Every "cannot disagree"
+claim on this page is conditional on both callers actually invoking the script. That gap is left
+deliberately open: `.claude/hooks/` fire on tool events, not pipeline stages, so no hook can assert
+"step 3 ran", and CI cannot invoke an LLM skill at all. Closing it is the job of behavioral evals,
+which this change does not ship.
+
+**Interface.** `glob-overlap.sh <surface-a-file> <surface-b-file>`, each file holding **one
+bare glob per line** — one *surface* per file, matching this section's unit (overlap is
+defined between glob SETS). Globs never pass through argv, so no shell can expand them.
+Exit `0` = disjoint, stdout empty. Exit `1` = intersecting, stdout carries one
+tab-separated `<globA>\t<globB>` line per intersecting pair (the evidence). Exit `2` =
+usage or I/O error, diagnostics on stderr, stdout empty. The result space (`0`/`1`) is
+deliberately disjoint from the error space (`2`) because **both** relation answers are
+legitimate results — do not "fix" this into the `validate.sh` convention where any non-zero
+means bad.
+
+**Points this section formerly left open, now fixed** (each is pinned by a test vector):
+
+| Case | Resolution |
+|------|------------|
+| Evidence form | The **normalized** glob, not the raw input line |
+| Trailing `/` | Dropped — `src/auth/` ≡ `src/auth`, **not** `src/auth/**` |
+| Malformed `**` (not a whole segment) | Exit `2` — it cannot yield a legitimate relation answer |
+| A glob normalizing to an empty path (`/`, `.`, `./`) | Exit `2` |
+| Empty surface (zero globs) | **Disjoint — exit `0`, not an error.** Absence is a WARN-tier signal owned by the consumer (see "Undeclared default"); the script must not swallow it |
+| Bullet markers (`- `) | **NOT stripped.** Callers must hand the script bare globs — strip the manifest/spec bullet prefix first |
+| Blank line, or a line whose first non-blank char is `#` | **Ignored**, so a vector/surface file may carry comments. Consequence: **a glob may not begin with `#`** — a literal `#notes/**` would be silently dropped rather than matched |
+| Duplicate globs within one surface | Collapse to first occurrence after normalization; evidence never repeats a pair |
+| Evidence ordering | A-major, then B — deterministic |
+| A TAB inside a glob | Exit `2` — it would corrupt the tab-separated evidence |
+
+**The script computes intersection ONLY.** Dependency-gating — *which* pairs a non-empty
+intersection is applied to — contains no shared code and stays in each caller, because the
+callers legitimately differ: `decompose` gates against the **manifest's** `depends_on`,
+`coherence-audit` against the **specs'**.
 
 ### How the consumer interprets this section (informative — logic is T2)
 
@@ -131,6 +234,14 @@ rename)** and **before any `spec.md` is generated**.
 - **Rationale**: <why, including rejected alternatives>
 
 ## Features  (ordered — a dependency appears before its dependents)
+### session-core
+- declared-surface:
+  - src/session/**
+- depends_on: []
+- accept-seed: Sessions persist across requests and expire on logout.
+- pre-approved-batch: no
+- state: pending
+
 ### auth
 - declared-surface:
   - src/auth/**
@@ -138,19 +249,13 @@ rename)** and **before any `spec.md` is generated**.
 - depends_on: [session-core]
 - accept-seed: A user can log in and out with a persisted session.
 - pre-approved-batch: no
-
-### session-core
-- declared-surface:
-  - src/session/**
-- depends_on: []
-- accept-seed: Sessions persist across requests and expire on logout.
-- pre-approved-batch: no
+- state: pending
 ```
 
 ### Per-feature field list (the `{...}` tuple, R1.1)
 
 `{ feature-id, declared-surface (globs), depends_on, accept-seed }` — plus the
-`pre-approved-batch` line of §3. Mapping to downstream artifacts:
+`pre-approved-batch` line of §3 and the `state:` line below. Mapping to downstream artifacts:
 
 | Manifest field | Flows to |
 |----------------|----------|
@@ -158,6 +263,46 @@ rename)** and **before any `spec.md` is generated**.
 | `declared-surface:` (globs) | copied **verbatim** into the spec's `## Declared Surface` → `declared-surface:` list |
 | `depends_on:` | the spec's `depends_on:` AND build-order's ledger `depends_on:` (§4) |
 | `accept-seed:` | seeds the spec's R0 acceptance sub-requirement AND build-order's ledger `accept:` field |
+| `state:` | nothing downstream — decompose's own resume ledger (below) |
+
+### Ownership: exactly two fields are machine-written  (D12, D19)
+
+The manifest is the single object the **human** approves, and a resume makes the machine a
+writer to it. That is safe only because the split is explicit:
+
+| Written by | Fields |
+|------------|--------|
+| **Human only** | the feature set itself, `declared-surface:`, `depends_on:`, `accept-seed:`, `## Shared Decisions` — a resume **never** changes these |
+| **Machine only** | `state:` and `pre-approved-batch:` — and nothing else |
+
+**`state:` — decompose's per-feature resume ledger.** Exactly two values:
+
+| Value | Meaning |
+|-------|---------|
+| `pending` | No trustworthy `spec.md` exists for this feature yet. Initialized `pending` when the manifest is written, **before any spec is generated**. |
+| `generated` | `specify` returned successfully for this feature **and** the D20 marker has been stamped. |
+
+- The flip to `generated` happens **only after** the per-feature `specify` call returns —
+  never before. That write timing is what makes a crash mid-generation safe: a torn or
+  missing `spec.md` is still `pending`, so a resume regenerates it rather than trusting it.
+- **Every manifest rewrite is atomic** (temp file in the same directory + rename), so no
+  reader can observe a torn manifest and no human can approve one.
+- An **in-place structural merge** runs against a feature that is already `generated`, and
+  `state:` deliberately does **not** mark it: leaving it `generated` would let a crash
+  mid-merge strand a torn `spec.md` that the next resume trusts and skips, while resetting it
+  to `pending` would mean "no body to preserve" and trigger the full regeneration the merge
+  exists to avoid. The protection is atomicity instead — the merge writes `spec.md` atomically
+  too, so the file is either wholly pre-merge or wholly post-merge and `generated` stays
+  truthful either way. (This is why the vocabulary is two values and not
+  `pending`/`running`/`generated`/`merging`: a `running` or `merging` state cannot be written
+  durably around a synchronous call without a second flush, and atomicity solves the same
+  problem without adding a state every reader must learn.)
+- **Legacy manifests written before `state:` existed** are migrated by one-time inference on
+  the next resume: a feature whose `spec.md` exists is `generated`, otherwise `pending`, and
+  the field is then written.
+- The line is **additive and name-keyed**: `specify mode: batch` looks up only
+  `pre-approved-batch:` plus the surface fields, and `build-order` reads only `depends_on`.
+  Neither validates the manifest against a fixed schema, so neither is affected.
 
 ### Shared-decisions block (exact heading: `## Shared Decisions`)
 
@@ -192,6 +337,23 @@ mirroring loop's **marker-AND-line** rule, the bypass fires only when BOTH are p
   — written by `decompose` into that feature's manifest entry (§2), flipped from `no` to
   `yes` ONLY after the human approves the partition gate (R1.3). It is the specify analogue
   of loop's `pre-approved-unattended: yes`.
+
+**The flip runs in BOTH directions.** `no` → `yes` on an explicit human Approve, as above —
+and on a **resume**, the machine also resets it **`yes` → `no`** for any entry that was
+**changed or added** since the last run. Without that reset, a changed entry would still
+carry `yes` from the original gate and `specify mode: batch` would bypass its prompts for a
+partition **no human ever approved**. The reset is therefore what keeps the one-way human
+guarantee true across re-entry, not a weakening of it:
+
+| Direction | Written by | When |
+|-----------|------------|------|
+| `no` → `yes` | decompose | The human explicitly Approves the partition gate |
+| `yes` → `no` | decompose | A resume detects that entry changed (D20 digest differs), or the entry is new |
+
+Entries that did **not** change keep `yes` and are not re-asked — their original approval
+still covers them, which is what keeps a resume cheap. An **Abort** at the scoped re-gate
+leaves a changed entry at `pre-approved-batch: no` while keeping `state: generated`, so the
+existing spec body is still there to preserve on the next attempt.
 
 Bypass condition (mirrors loop:233-236): specify skips its interactive prompts **iff** the
 invocation carries `mode: batch` **AND** the feature's manifest entry carries
@@ -254,4 +416,10 @@ distinct spelling (`depends_on:` list vs `**Depends on**:` bold) — intentional
 | `accept-seed:` | manifest | decompose | spec R0 + build-order `accept:` |
 | `## Shared Decisions` / `SD<n>` | manifest → every spec's `## Decisions` | decompose | coherence-audit (contradiction common-ground, D7) |
 | `mode: batch` (marker) | specify invocation | decompose | specify (bypass gate, D5) |
-| `pre-approved-batch: yes` (line) | manifest entry | decompose (post-gate) | specify (bypass gate, D5) |
+| `pre-approved-batch: yes\|no` (line) | manifest entry | decompose — **machine-written in BOTH directions**: `no`→`yes` post-gate, `yes`→`no` on resume for a changed or added entry (§3) | specify (bypass gate, D5) |
+| `state: pending\|generated` (line) | manifest entry | decompose — machine-written (§2) | decompose's own resume ledger; **no downstream consumer** |
+| `<!-- decompose-entry: <feature-id> @ sha256:<digest> -->` | **line 1** of each generated `spec.md` | decompose — machine-written, stamped after `specify` returns (§1) | decompose's resume (drift attribution). coherence-audit must treat it as **metadata, never as spec content** |
+
+**Machine-owned vs human-owned, at a glance.** Only three tokens in this whole contract are
+written by the machine — `state:`, `pre-approved-batch:`, and the `decompose-entry` marker.
+Everything else in a manifest is human-authored and a resume never rewrites it.
