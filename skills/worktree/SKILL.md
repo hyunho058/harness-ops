@@ -8,10 +8,10 @@ description: |
   current session. Prepares an isolated sibling working directory, auto-copies
   untracked local config (.env, .claude/settings.local.json), spins up a tmux
   session running claude, and hands you the exact attach command.
-  Use when: "/worktree", "worktree", "worktree 만들어", "worktree 목록",
-  "worktree 정리", "worktree attach", "새 작업공간", "병렬 세션",
-  "새 브랜치로 따로 작업", "parallel session", "isolated workspace",
-  "separate session", "new workspace", "tmux session", "attach session".
+  Use when: "/worktree", "worktree", "create a worktree", "list worktrees",
+  "clean up worktrees", "remove a worktree", "worktree attach", "parallel session",
+  "isolated workspace", "separate session", "new workspace", "work on a branch
+  separately", "tmux session", "attach session".
   Do NOT trigger for: questions about the Agent `isolation: "worktree"` option
   (that is a temporary in-session agent worktree, a different thing), or general
   git branch questions that do not involve a separate working directory.
@@ -86,11 +86,23 @@ Inspect the invocation argument and route to a subcommand:
 
 | Argument starts with | Subcommand |
 |----------------------|------------|
-| `list`, `ls`, `목록` | **List** |
-| `attach`, `at`, `접속` | **Attach** (rest = session/branch name) |
-| `remove`, `rm`, `정리`, `삭제` | **Remove** |
-| anything else (incl. a branch name) | **Create** (rest = branch name) |
+| `list`, `ls` | **List** |
+| `attach`, `at` | **Attach** (rest = session/branch name) |
+| `remove`, `rm`, `delete` | **Remove** |
+| anything else that reads as a branch name — **ASCII, no whitespace** | **Create** (rest = branch name) |
+| anything else — **non-ASCII, or containing whitespace** | **Ask first** via AskUserQuestion; do **NOT** create. See the guard below. |
 | empty | Ask the user which action (create / list / attach / remove) via AskUserQuestion |
+
+> **Guard — never auto-create from an implausible branch name.** `Create` is the
+> catch-all, so *any* unrecognized argument would otherwise become a new branch plus a
+> worktree directory and a tmux session — a side effect that is tedious to undo and easy
+> to trigger by a simple typo (`/worktree lst`) or by a non-English subcommand alias
+> this skill no longer parses — the localized aliases for list / attach / remove were
+> removed in favour of the English spellings above. When the argument is non-ASCII or
+> contains whitespace, treat it as **probably not a branch name**: ask the user whether
+> they meant a subcommand or genuinely want a branch by that name, and proceed only on
+> their answer. A non-ASCII branch name is perfectly legal in git, so this is a
+> confirmation, **not** a rejection.
 
 ---
 
