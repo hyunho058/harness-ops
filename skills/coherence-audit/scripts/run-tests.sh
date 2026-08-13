@@ -390,6 +390,171 @@ digest_expect_two "entry-digest: unknown feature-id -> exit 2" "$MAN/base.md" no
 digest_expect_two "entry-digest: an SD heading is not a feature -> exit 2" "$MAN/base.md" "SD1: Use SQLite for session storage"
 
 # ===========================================================================
+# D. portability contract — the full-corpus sweep and root-resolution parity
+# ===========================================================================
+#
+# The PreToolUse hook only inspects the NEXT write, so a skill can be listed as
+# converted and still drift on disk. This sweep is the whole-corpus check, and
+# it is runtime-independent (plain bash), which also covers a contributor
+# working in agy who never triggers a Claude Code hook.
+
+section "D. portability contract"
+
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+LINT="$REPO_ROOT/scripts/portability-lint.sh"
+MAP="$REPO_ROOT/references/runtime-tools.md"
+CONVERTED="$REPO_ROOT/references/converted-skills.md"
+
+for f in "$LINT" "$MAP" "$CONVERTED"; do
+  base=$(basename "$f")
+  if [ -f "$f" ]; then
+    ok "$base exists"
+  else
+    bad "$base exists" "not found: $f"
+  fi
+done
+
+if [ -f "$LINT" ] && [ -x "$LINT" ]; then
+  if "$LINT" --sweep >"$TMP/sweep.out" 2>"$TMP/sweep.err"; then
+    ok "portability sweep is clean across every listed skill"
+  else
+    bad "portability sweep is clean across every listed skill" \
+        "$(head -n 6 "$TMP/sweep.err" | tr '\n' ' ')"
+  fi
+else
+  bad "portability-lint.sh is executable" "not executable: $LINT"
+fi
+
+# --- root-resolution parity -------------------------------------------------
+# `resolve-harness-root` claims two runtimes reach the SAME repo root by
+# different means: ${CLAUDE_PLUGIN_ROOT} on Claude Code, a two-level ascent from
+# the skill directory on agy. The plugins/harness-ops -> ../ symlink means the
+# two can be different STRINGS for the same files, so compare resolved identity
+# and script OUTPUT — never the path text.
+
+ascent_root=$(cd "$REPO_ROOT/skills/coherence-audit/../.." && pwd -P)
+direct_root=$(cd "$REPO_ROOT" && pwd -P)
+if [ "$ascent_root" = "$direct_root" ]; then
+  ok "resolve-harness-root: two-level ascent resolves to the repo root"
+else
+  bad "resolve-harness-root: two-level ascent resolves to the repo root" \
+      "ascent: $ascent_root" "direct: $direct_root"
+fi
+
+if [ -d "$ascent_root/skills" ] && [ -d "$ascent_root/agents" ]; then
+  ok "resolve-harness-root: validation probes (skills/, agents/) both present"
+else
+  bad "resolve-harness-root: validation probes (skills/, agents/) both present" \
+      "missing under $ascent_root"
+fi
+
+# The symlinked path is a different string for the same files; the contract says
+# compare output, so prove the pinned script agrees through both spellings.
+sym_root="$REPO_ROOT/plugins/harness-ops"
+if [ -d "$sym_root" ]; then
+  write_surface "$TMP/parity-a" 'src/api/**/*.ts'
+  write_surface "$TMP/parity-b" 'src/api/handlers/*.ts'
+  set +e
+  out_direct=$("$ascent_root/skills/coherence-audit/scripts/glob-overlap.sh" "$TMP/parity-a" "$TMP/parity-b" 2>&1); rc_direct=$?
+  out_sym=$("$sym_root/skills/coherence-audit/scripts/glob-overlap.sh" "$TMP/parity-a" "$TMP/parity-b" 2>&1); rc_sym=$?
+  set -e
+  # NOTE: this is same-runtime, two-spelling parity — it proves the symlink does
+  # not change the result. It is NOT cross-runtime evidence; that requires an
+  # actual agy run (scripts/pilot-verify.sh).
+  if [ "$out_direct" = "$out_sym" ] && [ "$rc_direct" -eq "$rc_sym" ]; then
+    ok "pinned-script: same output through both root spellings, same runtime (exit $rc_direct)"
+  else
+    bad "pinned-script: same output through both root spellings, same runtime" \
+        "direct(exit $rc_direct): $out_direct" "symlink(exit $rc_sym): $out_sym"
+  fi
+else
+  bad "pinned-script parity: plugins/harness-ops symlink present" "not found: $sym_root"
+fi
+
+# --- hook path-guard regression ---------------------------------------------
+# The PreToolUse guard compares the target against REPO_ROOT. With logical `pwd`
+# the symlinked plugin root made REPO_ROOT `<repo>/plugins/harness-ops`, so the
+# guard rejected every real file and the gate silently no-opped. Both spellings
+# must block, and a foreign path must not.
+# The probes send a PENDING WRITE payload against a file that is CLEAN on disk.
+# An earlier version of these cases planted the violation on disk first, which
+# only proved the hook catches an already-dirty file — PostToolUse semantics one
+# write late, and exactly the shape D5 rejected. Never plant on disk here.
+guard_probe() {   # guard_probe <lint-script> <target-path> <pending-content>
+  jq -nc --arg p "$2" --arg c "$3" \
+    '{tool_name:"Write",tool_input:{file_path:$p,content:$c}}' \
+    | bash "$1" --hook >/dev/null 2>&1
+  echo $?
+}
+if [ -f "$LINT" ] && [ -n "${CONVERTED:-}" ] && grep -q '^| coherence-audit' "$CONVERTED"; then
+  clean_target="$REPO_ROOT/skills/coherence-audit/SKILL.md"
+  dirty='Read `../../references/runtime-tools.md` first.
+Use the Read tool to load the spec.
+Compute via `capability:run-glob-overlap` and `capability:resolve-harness-root`
+and `capability:read-declared-surface-schema` and `capability:spawn-inline-checker`.'
+  legit='Read `../../references/runtime-tools.md` first.
+A missing `Agent` tool marks the tier unverified; count `Agent.subagent_type`.
+Compute via `capability:run-glob-overlap` and `capability:resolve-harness-root`
+and `capability:read-declared-surface-schema` and `capability:spawn-inline-checker`.'
+
+  sum_before=$(shasum "$clean_target" | awk '{print $1}')
+  rc_a=$(guard_probe "$LINT" "$clean_target" "$dirty")
+  rc_b=$(guard_probe "$REPO_ROOT/plugins/harness-ops/scripts/portability-lint.sh" "$clean_target" "$dirty")
+  rc_c=$(guard_probe "$LINT" "/tmp/definitely-not-this-repo/SKILL.md" "$dirty")
+  rc_d=$(guard_probe "$LINT" "$clean_target" "$legit")
+  rc_e=$(guard_probe "$LINT" "$REPO_ROOT/skills/loop/SKILL.md" "$dirty")
+
+  [ "$rc_a" = "2" ] && ok "hook DENIES a pending violating write (R6.1)" \
+                    || bad "hook DENIES a pending violating write (R6.1)" "exit $rc_a, expected 2 — hook may be linting disk instead of the payload"
+  [ "$rc_b" = "2" ] && ok "hook denies via the plugins/ symlink root too" \
+                    || bad "hook denies via the plugins/ symlink root too" "exit $rc_b, expected 2 (logical-pwd regression)"
+  [ "$rc_c" = "0" ] && ok "hook no-ops on a path outside this repo" \
+                    || bad "hook no-ops on a path outside this repo" "exit $rc_c, expected 0"
+  [ "$rc_d" = "0" ] && ok "hook allows a pending write with only bare mentions" \
+                    || bad "hook allows a pending write with only bare mentions" "exit $rc_d, expected 0 — false positive"
+  [ "$rc_e" = "0" ] && ok "hook no-ops on an unconverted skill" \
+                    || bad "hook no-ops on an unconverted skill" "exit $rc_e, expected 0"
+
+  # MultiEdit carries `edits[]` (no top-level new_string) and Edit may carry
+  # replace_all. Both previously fell through to disk-linting / a single-
+  # occurrence patch, so a violating write sailed past the gate.
+  me_probe() {   # me_probe <target> <old> <new> [replace_all]
+    jq -nc --arg p "$1" --arg o "$2" --arg n "$3" \
+      '{tool_name:"MultiEdit",tool_input:{file_path:$p,edits:[{old_string:$o,new_string:$n}]}}' \
+      | bash "$LINT" --hook >/dev/null 2>&1; echo $?
+  }
+  ra_probe() {
+    jq -nc --arg p "$1" --arg o "$2" --arg n "$3" \
+      '{tool_name:"Edit",tool_input:{file_path:$p,old_string:$o,new_string:$n,replace_all:true}}' \
+      | bash "$LINT" --hook >/dev/null 2>&1; echo $?
+  }
+  anchor='## Overlap tier'
+  grep -q "$anchor" "$clean_target" || anchor=$(grep -m1 '^## ' "$clean_target")
+
+  rc_f=$(me_probe "$clean_target" "$anchor" "$anchor
+Use the Read tool to load the spec.")
+  rc_g=$(me_probe "$clean_target" "$anchor" "$anchor
+A missing \`Agent\` tool marks the tier unverified.")
+  rc_h=$(ra_probe "$clean_target" '---' '---
+Use the Grep tool to scan.')
+
+  [ "$rc_f" = "2" ] && ok "hook denies a violating MultiEdit (edits[] branch)" \
+                    || bad "hook denies a violating MultiEdit (edits[] branch)" "exit $rc_f, expected 2 — edits[] may be falling through to disk"
+  [ "$rc_g" = "0" ] && ok "hook allows a MultiEdit with only bare mentions" \
+                    || bad "hook allows a MultiEdit with only bare mentions" "exit $rc_g, expected 0 — false positive"
+  [ "$rc_h" = "2" ] && ok "hook denies a violating replace_all edit" \
+                    || bad "hook denies a violating replace_all edit" "exit $rc_h, expected 2 — replace_all may be patching only the first match"
+
+  sum_after=$(shasum "$clean_target" | awk '{print $1}')
+  if [ "$sum_before" = "$sum_after" ]; then
+    ok "guard probes left the target byte-identical on disk"
+  else
+    bad "guard probes left the target byte-identical on disk" \
+        "before: $sum_before" "after:  $sum_after"
+  fi
+fi
+
+# ===========================================================================
 # summary
 # ===========================================================================
 printf '\n===================================================================\n'

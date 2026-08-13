@@ -32,6 +32,13 @@ allowed-tools:
 
 # /check-harness — Harness Maturity Diagnosis (v3)
 
+> **Runtime contract — read this first.** Before executing any step below, read
+> `../../references/runtime-tools.md`. This skill names **capabilities**, not runtime tool
+> names. The four analyzers are spawned with the pinned `capability:spawn-named-checker`
+> procedure — a divergent procedure, so its result must be confirmed by BOTH the named report
+> artifact and the subagent registry. A report that exists proves nothing on its own: an agent
+> that skipped delegation and wrote it in-context produces an identical file.
+
 Evaluates along the **6-axis cycle**: **Scaffolding → Context → Planning → Execution → Verification → Compounding**.
 Checklist source: `references/checklist.md` (must read first to confirm item definitions).
 
@@ -48,7 +55,7 @@ Checklist source: `references/checklist.md` (must read first to confirm item def
 - **Files**: saved to `.harness/check-reports/check-harness-{YYYY-MM-DD}-{scope}/`
   - `report.html` — visual report (CSS score gauge, per-axis expandable panels, self-contained)
   - `report.md` — markdown mirror (for diff·git·archive)
-- **Auto-open**: run `Bash: open {dir}/report.html` at the end
+- **Auto-open**: `capability:run-command` → `open {dir}/report.html` at the end
 - End of report one-liner: `📁 Saved: {dir}/ · 🌐 Opened: report.html`
 
 ---
@@ -60,7 +67,7 @@ If scope is explicit in user input, use it as-is:
 - `project` → Project only
 - `all` / unspecified → **Both**
 
-If scope is ambiguous, use `AskUserQuestion`:
+If scope is ambiguous, ask with `capability:ask-user`:
 
 ```
 question: "How far should we diagnose?"
@@ -96,8 +103,8 @@ Output paths:
 ### User scope agents (2)
 
 ```
-Agent(
-  subagent_type: "skill-portfolio-analyzer",
+capability:spawn-named-checker
+  checker: "skill-portfolio-analyzer",
   description: "Skill portfolio health scan",
   prompt: """
     Cross-analyze all installed skills/plugins/MCP against ~/.claude.json.
@@ -110,8 +117,8 @@ Agent(
   """
 )
 
-Agent(
-  subagent_type: "session-pattern-analyzer",
+capability:spawn-named-checker
+  checker: "session-pattern-analyzer",
   description: "User-wide session pattern scan",
   prompt: """
     scope=overall, days=7, long_session_min=20.
@@ -124,8 +131,8 @@ Agent(
 ### Project scope agents (3)
 
 ```
-Agent(
-  subagent_type: "session-pattern-analyzer",
+capability:spawn-named-checker
+  checker: "session-pattern-analyzer",
   description: "Project-scope session pattern scan",
   prompt: """
     scope=current_project, project_dir={PROJECT_ROOT}, days=30, long_session_min=20.
@@ -134,8 +141,8 @@ Agent(
   """
 )
 
-Agent(
-  subagent_type: "context-quality-reviewer",
+capability:spawn-named-checker
+  checker: "context-quality-reviewer",
   description: "Project context quality review",
   prompt: """
     project_root={PROJECT_ROOT}
@@ -144,8 +151,8 @@ Agent(
   """
 )
 
-Agent(
-  subagent_type: "project-automation-auditor",
+capability:spawn-named-checker
+  checker: "project-automation-auditor",
   description: "Project automation, verification & compounding audit",
   prompt: """
     project_root={PROJECT_ROOT}
@@ -158,7 +165,27 @@ Agent(
 
 **For Both scope, spawn all 5 in a single message** (project-session and automation-auditor have a dependency, but auditor is designed to run without session — parallel OK).
 
-After completion, read the JSONs and hold `PORTFOLIO`, `SESSION_USER`, `SESSION_PROJECT`, `CONTEXT`, `AUTOMATION` in memory.
+### Delegation assertion — required before Phase 2 (divergent-procedure rule)
+
+`capability:spawn-named-checker` is a **divergent** procedure: the two runtimes reach it by
+genuinely different means, so parity cannot be guaranteed by running identical bytes. Assert
+**both** of the following before using any result:
+
+1. **Artifact** — each expected JSON exists at its `/tmp/cc-cache/check-harness/` path.
+2. **Registry** — each analyzer appears as actually defined *and* invoked. Under Antigravity,
+   query `manage_subagents`; under Claude Code the spawn is native and its own return is the
+   evidence.
+
+Artifact existence alone is **not** sufficient. An agent that skipped delegation and wrote a
+well-formed `SESSION_REPORT` from its own context produces a file indistinguishable from the
+delegated one — and that is exactly the in-context degradation this skill's maker ≠ checker
+separation exists to prevent. Only the registry check tells them apart.
+
+If either assertion fails, **halt and say which** — `unavailable:`, `denied:`, or `unresolved:`
+per the map's Halting table. Do not proceed with a partial set of reports; a maturity score
+computed from four of five analyzers, presented as a score, misrepresents itself.
+
+After both assertions pass, read the JSONs and hold `PORTFOLIO`, `SESSION_USER`, `SESSION_PROJECT`, `CONTEXT`, `AUTOMATION` in memory.
 
 ---
 
@@ -536,7 +563,7 @@ The template (`references/html-template.html`) is a self-contained dark dashboar
    - `{{ACTIONS_GREEN}}`, `{{ACTIONS_YELLOW}}`, `{{ACTIONS_RED}}` — `<li>` action items (action-item markup below)
    - `{{INVENTORY_TABLE}}`, `{{MATRIX_TABLE}}` — runtime inventory blocks / 2×3 matrix grid
    - `{{FINDINGS_HIGH}}`, `{{FINDINGS_MEDIUM}}`, `{{FINDINGS_LOW}}` — `<li>` finding items (finding-item markup below)
-3. Write, then run `Bash: open {dir}/report.html` — opens in the default browser.
+3. Write, then `capability:run-command` → `open {dir}/report.html` — opens in the default browser.
 
 #### Ring, node, and grade computation
 

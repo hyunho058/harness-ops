@@ -2,7 +2,17 @@
   "hooks": {
     "SessionStart": [],
     "UserPromptSubmit": [],
-    "PreToolUse": [],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/portability-lint.sh --hook"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [],
     "PostToolUseFailure": [],
     "Stop": [],

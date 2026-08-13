@@ -1,0 +1,2 @@
+src/api/handlers/*.ts
+src/shared/config.ts

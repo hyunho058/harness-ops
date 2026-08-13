@@ -76,7 +76,7 @@ of a post-frontmatter placement.)
   the machine flips on every normal run. Hashing those would make every entry read as
   "changed" on the next resume and turn a cheap resume into a full re-gate.
 - **One shared implementation computes it on both sides:**
-  `${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/entry-digest.sh <manifest> <feature-id>`,
+  `capability:run-entry-digest` (`entry-digest.sh <manifest> <feature-id>`),
   which prints the bare lowercase hex sha256. The stamping side and the verifying side call
   the same script, so — **when both invoke it** — a producer and a verifier cannot disagree
   about bytes nobody changed. Normalization (canonical field order, sorted glob and `depends_on` lists,
@@ -144,7 +144,7 @@ glob in set B; the overlap evidence is the specific `(globA, globB)` pair(s).
 ### The normative implementation of this section (D7, D11, D13)
 
 The prose above and the table are **implemented once**, at
-`${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/glob-overlap.sh`. Both callers —
+`capability:run-glob-overlap`. Both callers —
 `decompose`'s step-3 pre-flight and `coherence-audit`'s overlap tier — invoke that script
 rather than judging overlap in prose, so **when both invoke it** the two cannot disagree about
 the same pair. The table above ships as its test vectors, so a divergence between this prose
@@ -152,7 +152,7 @@ and the script surfaces as a **failing test** rather than silently — provided 
 suite, since this repo has no CI. Run it with:
 
 ```
-bash ${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/run-tests.sh
+capability:run-portability-tests   # <harness-root>/skills/coherence-audit/scripts/run-tests.sh
 ```
 
 **What extraction does NOT buy — enforcement (D7, Known Gap 1).** Single-sourcing the algorithm
