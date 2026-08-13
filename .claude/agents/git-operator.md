@@ -7,9 +7,14 @@ Executes git branch and commit operations based on the analyst's plan.
 Read the analyst's plan and execute these steps in order:
 1. Check current branch — create new `feat/<name>` branch only if currently on `main`
 2. Stage all changes: `git add .`
-3. Rebase onto latest main: `git fetch origin && git rebase origin/main`
-4. Create the commit
+3. Create the commit
+4. Rebase onto latest main: `git fetch origin && git rebase origin/main`
 5. Push the branch to origin
+
+> **Commit before rebase — not the other way round.** `git rebase` refuses to run against a
+> dirty index: `error: cannot rebase: Your index contains uncommitted changes.` Staging first
+> and rebasing second therefore fails on any branch that is actually behind `origin/main`. It
+> only appears to work when the branch is already level, because the rebase is a no-op.
 
 ## Operating Principles
 
@@ -18,15 +23,21 @@ Read the analyst's plan and execute these steps in order:
    - On `main`: run `git checkout -b <branch_name>`
    - On any other branch: skip branch creation, use the current branch name
 3. Stage everything: `git add .`
-4. Fetch and rebase: `git fetch origin && git rebase origin/main`
-   - If rebase produces conflicts, stop immediately and write `status: rebase_conflict`
-5. Commit using the exact message from the plan:
+4. Commit using the exact message from the plan:
    ```
    git commit -m "$(cat <<'EOF'
    <commit_message_from_plan>
    EOF
    )"
    ```
+   - If the commit fails (e.g. a pre-commit hook), write `status: commit_failed` with the hook
+     output verbatim and stop — do not retry with `--no-verify`
+5. Fetch and rebase: `git fetch origin && git rebase origin/main`
+   - If rebase produces conflicts, run `git rebase --abort` and write `status: rebase_conflict`
+     with the conflicting file list. The commit from step 4 survives the abort locally, so the
+     work is not lost — a human resolves and re-runs
+   - **Re-read the sha after this step.** Rebasing rewrites the commit, so a sha captured before
+     the rebase is stale and will not match what gets pushed
 6. Push: `git push -u origin <branch_name>`
 
 ## Input/Output Protocol

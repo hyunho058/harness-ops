@@ -28,6 +28,12 @@ allowed-tools:
 
 # /coherence-audit — Cross-Spec Coherence Checker
 
+> **Runtime contract — read this first.** Before executing any step below, read
+> `../../references/runtime-tools.md`. This skill names **capabilities**, not runtime tool
+> names, and cites pinned **procedure ids** (`` `capability:<id>` ``) wherever the outcome
+> depends on running exactly that procedure. The map turns each one into the concrete call for
+> the runtime you are in. Do not substitute your own reasoning for a cited procedure id.
+
 Check a **set** of feature specs for incoherence *before* a build drives them.
 
 When a user authors (or `/decompose` generates) many sibling `spec.md` files to feed an
@@ -108,8 +114,10 @@ human interaction (build-order's Phase-2 Approve, decompose's initiating human).
 
 ## What it reads — the T1 declared-surface contract
 
-Bind to `references/declared-surface-schema.md` and **consume its tokens verbatim — do not
-redefine them**. Per spec, read:
+Bind to `references/declared-surface-schema.md` via `capability:read-declared-surface-schema` and
+**consume its tokens verbatim — do not redefine them**. That id is pinned rather than a plain read
+because the verdict depends on these normalization rules exactly; a paraphrase of them changes
+outcomes. Per spec, read:
 
 - **`## Declared Surface`** section (the heading is what the declared-vs-undeclared check keys on):
   - **`declared-surface:`** — the bullet list of owned **path globs** (what the overlap check reads).
@@ -161,8 +169,11 @@ The glob set-intersection is **run, not reasoned about**. Do **not** judge overl
 the one shared implementation of schema §1 — the same script decompose's step-3 pre-flight calls, so
 **when both invoke it** the two skills return the **identical verdict for the same pair**:
 
+Run `capability:run-glob-overlap` — the map pins the exact command for your runtime, built on the
+absolute root from `capability:resolve-harness-root`:
+
 ```
-${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/glob-overlap.sh <surface-a-file> <surface-b-file>
+<harness-root>/skills/coherence-audit/scripts/glob-overlap.sh <surface-a-file> <surface-b-file>
 ```
 
 **Per pair of *declared* specs (A, B):**
@@ -199,15 +210,26 @@ The set of **pairs sharing a surface** (ordered *and* unordered) is handed forwa
 contradiction tier is **un-gated** and runs over all of them.
 
 **Fallback — the check could not run (R7.4, D8, D16, D22).** Two shapes, one policy:
-**tier-wide** — the script is missing, not executable, or `${CLAUDE_PLUGIN_ROOT}` does not resolve
+**tier-wide** — the script is missing, not executable, or the harness root does not validate
 (plausible on the plain `.claude/skills/` stub-symlink path); or **pair-scoped** — the script exits
 `2` on a pair (a malformed glob; diagnostics on stderr). In **neither** case does coherence-audit
 hard-fail. It is flag-only: it writes a report and halts nothing (Rule 1), and a report that
 honestly says "unverified" is more useful than no report at all. Take the same path this skill
-already ships for a missing `Agent` tool (tier 3 below):
+already ships when the checker capability is unavailable (tier 3 below):
 
 - **Label the tier `unverified`** in the report, naming what was unavailable (or, for an exit `2`,
   quoting the script's stderr and the pair it applies to).
+
+Name *which* tier-wide failure occurred — the three are not interchangeable and their fixes differ
+(see the map's Halting table):
+
+- `unresolved: harness root did not validate at <path>` — `capability:resolve-harness-root` failed
+  its `skills/` + `agents/` probes.
+- `denied: run-command requires permission not granted` — the command capability exists but was
+  refused. Antigravity's headless `-p` mode auto-denies it; an allow-rule or an interactive run
+  fixes it. **This is not a missing capability**, and reporting it as one sends the reader to the
+  wrong fix.
+- `unavailable: <procedure> not provided by <runtime>` — genuinely absent here.
 - **Treat the affected pairs as unresolved** — tier-wide, that is every pair of declared specs,
   because which pairs actually share a surface is precisely what could not be computed; hand that
   un-narrowed pair set forward to tier 3 rather than a narrowed one.
@@ -220,14 +242,16 @@ already ships for a missing `Agent` tool (tier 3 below):
 ### 3. Contradiction tier — JUDGED, a SEPARATE subagent  (R3.1, R3.2, D7)
 A contradiction is a **judgement**, and the checker must not grade decisions it could be biased
 about — so a **separate judge subagent** runs this tier, **never the decomposer** (maker ≠ checker).
-Spawn it via the **`Agent`** tool (the same mechanism specify's `L2-reviewer` and loop's Gate-3
-checker use). Hand it **only** the spec files' `## Decisions` for the pairs sharing a surface —
+Spawn it with `capability:spawn-inline-checker` — its prompt is written inline below, so there
+is no `agents/<name>.md` to source (the same mechanism specify's `L2-reviewer` and
+loop's Gate-3 checker use). Hand it **only** the spec files' `## Decisions` for the pairs sharing a surface —
 **not** any decomposer reasoning or manifest (the separation is the whole point). The comparison is
 **un-gated by dependency order** (D2-scope): ordering makes write-*timing* deterministic but never
 makes two opposite Decisions coherent, so an ordered pair can still contradict.
 
+Give the checker this prompt:
+
 ```
-Agent(subagent_type="general-purpose", prompt="""
 You are an INDEPENDENT cross-spec contradiction judge. You did NOT author these specs
 (maker ≠ checker) and you have NOT seen any decomposer reasoning, manifest, or task notes —
 only the spec files' `## Decisions`. Judge contradiction from the cited decisions alone.
@@ -252,14 +276,13 @@ Return, per pair, the R3.3 schema: { pair: A ⨯ B, shared-path, classification:
 complementary, evidence: A `D<i>: <title>` (chose <x>; rejected <y>) vs B `D<j>: <title>`
 (chose <z>) — same role on <shared path>, verdict: block | ok }. CITE the exact Decision
 ids + titles — a bare verdict with no cited Decision evidence is invalid. Only INCOMPATIBLE blocks.
-""")
 ```
 
 **Result:** each **incompatible** pair → **FLAG: contradiction, BLOCK-tier**, with the cited
 Decision evidence. Each **complementary** pair → **NOT a conflict**; record it under the report's
 **"Considered, not flagged → complementary shares"** section.
 
-**Fallback — no `Agent` tool in this environment** (mirrors loop's Gate-3 fallback): do **not**
+**Fallback — `capability:spawn-inline-checker` unavailable here** (mirrors loop's Gate-3 fallback): do **not**
 silently pass the contradiction tier. Label it `unverified` in the report and treat any
 shared-surface pair as unresolved — never return a clean `OK` over an unjudged shared surface.
 Maker ≠ checker is a hard invariant: an un-judged contradiction tier is surfaced, not hidden.
@@ -281,7 +304,7 @@ Two tiers, severity-matched. Compute the overall token from the findings:
 | **unordered overlap** (independent features, no `depends_on` path, same surface) | **BLOCK** | a provable hazard — last-writer-wins write collision |
 | **redundancy** (near-duplicate Requirements/goal) | warn | advisory — duplication, not a collision |
 | **undeclared** surface (no `## Declared Surface` / empty list) | warn | unverifiable, not a proven conflict (D8) |
-| **`unverified` tier** (overlap: `glob-overlap.sh` unavailable · contradiction: no `Agent` tool) | **BLOCK** | the check never ran — strictly *less* informed than a known collision (D8, R7.4) |
+| **`unverified` tier** (overlap: pinned script unavailable · contradiction: no checker capability) | **BLOCK** | the check never ran — strictly *less* informed than a known collision (D8, R7.4) |
 
 **Overall verdict:**
 - **`BLOCK`** — iff ≥1 block-tier finding (a contradiction OR an unordered overlap), **or any tier
@@ -358,11 +381,11 @@ stages/inputs: intentional, idempotent defense-in-depth, not redundant work.
    reasoning, manifest, or task notes (maker ≠ checker, across the whole pipeline). A line-1
    `<!-- decompose-entry: <feature-id> @ sha256:<digest> -->` comment is **machine-owned metadata**:
    never spec content, never part of `## Decisions`, never evidence for a judged finding.
-3. **Maker ≠ checker on contradiction.** The contradiction tier is run by a **separate `Agent`
-   subagent** — never the decomposer, and never handed the maker's reasoning. No `Agent` tool →
+3. **Maker ≠ checker on contradiction.** The contradiction tier is run by a **separate checker
+   subagent** — never the decomposer, and never handed the maker's reasoning. No checker capability →
    label the tier `unverified` (→ `BLOCK`, Rule 9); never silently pass it.
 4. **Deterministic where possible — and overlap is a SCRIPT, not a judgement.** The glob
-   set-intersection is computed by `${CLAUDE_PLUGIN_ROOT}/skills/coherence-audit/scripts/glob-overlap.sh`
+   set-intersection is computed by `capability:run-glob-overlap`
    — the same script decompose's pre-flight calls, so **when both invoke it** both skills return the
    same verdict for the same pair. Redundancy is maker-run; only contradiction is judged. Script
    unavailable → the tier is `unverified` (→ `BLOCK`, Rule 9); never fall back to inline reasoning or
@@ -385,7 +408,7 @@ stages/inputs: intentional, idempotent defense-in-depth, not redundant work.
    report header; a caller reads it from the report file (deterministic file signal) and branches on
    it. The skill reuses the existing skills byte-unchanged — it only adds a call site for callers.
 9. **A missing dependency DEGRADES, it never halts — and `unverified` resolves to `BLOCK`** (D8,
-   D16, R7.4). No `Agent` tool (tier 3), or no `glob-overlap.sh` / an exit `2` from it (tier 2) →
+   D16, R7.4). No checker capability (tier 3), or no `glob-overlap.sh` / an exit `2` from it (tier 2) →
    label that tier `unverified`, treat its pairs as unresolved, write the report anyway, and yield
    `BLOCK`. Never a clean `OK` over a check that never ran, and never `WARN`: an uncomputable check
    is strictly less informed than a known collision. The skill still halts nothing — it reports

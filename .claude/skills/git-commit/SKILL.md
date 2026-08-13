@@ -1,6 +1,6 @@
 ---
 name: git-commit
-description: "Git workflow orchestrator. Triggers on: 'please commit', 'commit this', 'commit and push', 'make a PR', 'create pull request', 'push and open PR', 'ship this', 'commit my changes', 'please push', 'make a commit'. Automates the full git flow: creates a feature branch (if on main), stages all changes, rebases onto main, writes a Conventional Commits message, pushes the branch, and opens a GitHub PR. Also handles follow-up requests: 're-run commit', 'redo the PR', 'update commit message', 'retry push', 'fix the PR'. Do NOT trigger for: git status questions, reading git log, explaining diffs, or resetting/reverting changes."
+description: "Git workflow orchestrator. Triggers on: 'please commit', 'commit this', 'commit and push', 'make a PR', 'create pull request', 'push and open PR', 'ship this', 'commit my changes', 'please push', 'make a commit'. Automates the full git flow: creates a feature branch (if on main), stages all changes, writes a Conventional Commits message, commits, rebases onto main, pushes the branch, and opens a GitHub PR. Also handles follow-up requests: 're-run commit', 'redo the PR', 'update commit message', 'retry push', 'fix the PR'. Do NOT trigger for: git status questions, reading git log, explaining diffs, or resetting/reverting changes."
 allowed-tools:
   - Read
   - Bash
@@ -25,7 +25,7 @@ Agent(git-analyst)  →  Agent(git-operator)  →  Agent(git-pr-agent)
 | Step | Agent | Role | Input | Output |
 |------|-------|------|-------|--------|
 | 1 | git-analyst | Analyze diff, write commit plan | git state | `_workspace/01_analyst_plan.md` |
-| 2 | git-operator | Branch, rebase, commit, push | analyst plan | `_workspace/02_operator_report.md` |
+| 2 | git-operator | Branch, commit, rebase, push | analyst plan | `_workspace/02_operator_report.md` |
 | 3 | git-pr-agent | Create GitHub PR | analyst plan + operator report | `_workspace/03_pr_result.md` |
 
 ## Workflow
@@ -90,7 +90,7 @@ Invoke only after Phase 2 succeeds:
 Agent(
   subagent_type: "general-purpose",
   model: "opus",
-  description: "Git operator — branch, rebase, commit, push",
+  description: "Git operator — branch, commit, rebase, push",
   prompt: "
     You are the git-operator agent.
     Read the full role definition at: <CWD>/.claude/agents/git-operator.md
@@ -104,8 +104,11 @@ Agent(
        - If 'main': git checkout -b <branch_name>
        - Otherwise: stay on current branch
     3. git add .
-    4. git fetch origin && git rebase origin/main
-    5. git commit -m '<commit_message>'
+    4. git commit -m '<commit_message>'
+    5. git fetch origin && git rebase origin/main
+       (commit BEFORE rebase — git rebase refuses a dirty index:
+        'error: cannot rebase: Your index contains uncommitted changes')
+       (re-read the sha after this — rebasing rewrites the commit)
     6. git push -u origin <branch_name>
 
     Write result to _workspace/02_operator_report.md
@@ -155,7 +158,7 @@ Read all three workspace files and report to the user:
 | Error | Response |
 |-------|----------|
 | Nothing to commit | Stop at Phase 0 |
-| Rebase conflict | Report files in conflict; suggest manual resolution then re-run |
+| Rebase conflict | Abort the rebase; report files in conflict. The commit is already made and survives the abort — say so, so the user does not fear lost work |
 | Push rejected | Report rejection reason; never force-push |
 | `gh` not authenticated | Suggest `gh auth login` |
 | Pre-commit hook failure | Show hook output; user must fix and re-run |
@@ -173,13 +176,15 @@ When the user says "retry push", "redo PR", or "fix the commit message":
 
 1. User has uncommitted changes on `main`
 2. git-analyst → writes `branch_name: feat/add-logging`, `commit_message: feat(logger): add structured logging`
-3. git-operator → creates branch, rebases, commits, pushes
+3. git-operator → creates branch, commits, rebases, pushes
 4. git-pr-agent → creates PR, returns URL
 5. Report: "Branch `feat/add-logging` pushed. Commit: `a1b2c3d`. PR: https://github.com/.../pull/42"
 
 ### Error path: rebase conflict
 
 1. Analyst writes plan successfully
-2. Operator hits conflict during `git rebase origin/main`
-3. Operator writes `status: rebase_conflict`
-4. Phase 4 skipped; report: "Rebase conflict in `src/foo.ts`. Resolve manually then run 'please commit' again."
+2. Operator stages and **commits**, then hits a conflict during `git rebase origin/main`
+3. Operator runs `git rebase --abort` and writes `status: rebase_conflict`
+4. Phase 4 skipped; report: "Rebase conflict in `src/foo.ts`. Your commit is already made locally
+   and survived the abort — nothing is lost. Resolve the conflict, then run 'please commit' again
+   (it will find nothing new to stage and proceed to rebase + push)."

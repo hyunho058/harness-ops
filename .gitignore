@@ -43,3 +43,6 @@ specs/
 
 # Local workspace / agent working files (incl. timestamped backups)
 _workspace*/
+
+# pilot-verify run artifact — coherence-audit writes its report beside the specs it audits
+skills/coherence-audit/scripts/tests/portability-fixture/coherence-report.md
