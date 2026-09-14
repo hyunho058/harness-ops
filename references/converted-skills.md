@@ -21,7 +21,7 @@ makes the blocking hook deny every intermediate save of the rewrite.
 |---|---|
 | coherence-audit | resolve-harness-root, run-glob-overlap, read-declared-surface-schema, spawn-inline-checker |
 | check-harness | spawn-named-checker |
-| worktree | - |
+| worktree | run-command |
 
 Listing `check-harness` also brings `agents/*.md` into lint scope, because its
 `spawn-named-checker` procedure feeds those bodies to the runtime as prompt text.

@@ -6,8 +6,8 @@ description: |
   detached tmux session — so you can run separate, independent Claude Code or
   Antigravity CLI (agy) sessions on different branches in parallel without
   touching the work in your current session. Prepares an isolated sibling
-  working directory, auto-copies untracked local config (.env, Claude/Gemini
-  settings), spins up a tmux session running the selected agent, and hands you
+  working directory, auto-copies gitignored local config (.env,
+  .claude/settings.local.json), spins up a tmux session running the selected agent, and hands you
   the exact attach command.
   Use when: "/worktree", "worktree", "create a worktree", "list worktrees",
   "clean up worktrees", "remove a worktree", "worktree attach", "parallel session",
@@ -30,6 +30,13 @@ allowed-tools:
 > names, and cites pinned **procedure ids** (`` `capability:<id>` ``) wherever the outcome
 > depends on running exactly that procedure. The map turns each one into the concrete call for
 > the runtime you are in. Do not substitute your own reasoning for a cited procedure id.
+>
+> **`capability:run-command` is this skill's entire working surface.** It ships no pinned scripts
+> and spawns no subagents: `git`, `cp`, and `tmux` are how every subcommand does its work, and
+> every shell snippet below is executed with it (every user prompt, with `capability:ask-user`).
+> So when the shell capability is unavailable or denied, this skill does **not** degrade — it
+> **halts**. See `## Halting` at the end, and do not confuse that with the tmux-absent path, which
+> is a real graceful degrade.
 
 Manage `git worktree` directories whose purpose is to let the user run a **second,
 fully independent agent session** (under **Antigravity CLI `agy`** or **Claude Code**) on another branch — with zero interference
@@ -53,7 +60,8 @@ only has to `tmux attach`.
    What still requires the user's own terminal is **attaching** to it — so
    Create ends by printing the exact `tmux attach` command. Without tmux, fall back to
    printing `cd … && <agent> --dangerously-skip-permissions` for the user to run in a
-   new terminal. Never claim to have *attached* a session.
+   new terminal — or a bare `cd …` if that agent is not installed. Never claim to have
+   *attached* a session.
 2. **A branch can be checked out in only one worktree at a time.** Always create a
    **new** branch with `-b` for a fresh workspace, unless the user names an existing
    branch that is not checked out anywhere.
@@ -67,18 +75,30 @@ only has to `tmux attach`.
 
 ## Agent Runtime Selection (detect or override)
 
+This runs **only for Create** — `list` / `attach` / `remove` never select a runtime.
 Determine which agent to run in the target workspace (`agy` or `claude`):
 
-1. **Explicit argument override**: If the invocation contains `agy` or `claude` (e.g. `create <branch> agy`), use that selection.
-2. **Auto-detection**: If no agent runtime is explicitly specified:
+1. **Explicit argument override** — only when the **last whitespace-separated token** is exactly
+   `agy` or `claude` **and** at least one token precedes it to serve as the branch name:
+   `create feat/x agy` → runtime `agy`, branch `feat/x`.
+   - **Whole token, never a substring.** `create fix/claude-md-drift` and `create feat/agy-support`
+     are branch names, not runtime selections.
+   - **`create agy` is a branch named `agy`.** The verb already consumed the subcommand, so the one
+     remaining token is the branch; only a *second* token can select a runtime.
+   - **Strip the token before the branch name is read** — otherwise the branch becomes
+     `feat/x agy` and the slug `feat-x-agy`.
+2. **Auto-detection**: If no runtime token was given:
    - If `$ANTIGRAVITY_AGENT` is set (or `$ANTIGRAVITY_AGENTAPI_EXE` is set), default to `agy`.
    - Otherwise, default to `claude`.
 3. **Binary availability check**: Check whether the selected agent is in PATH:
    ```bash
    command -v <agent> >/dev/null 2>&1
    ```
-   If the binary is missing, warn the user and fall back to starting a plain shell without launching an agent.
-4. **Agent startup command**:
+   If the binary is missing, warn the user, leave `AGENT_CMD` **unset**, and fall back to a plain
+   shell — skip the pre-warm in step 5, and at hand-off print a plain `cd <path>`, never a launch
+   command for a binary that is not there.
+4. **Agent startup command** — resolves to one literal string, `AGENT_CMD`, which step 5
+   substitutes into its snippet:
    - `agy`: `agy --dangerously-skip-permissions`
    - `claude`: `claude --dangerously-skip-permissions`
    - (Safer alternative: for `agy` use `--mode accept-edits`; for `claude` use `--permission-mode acceptEdits`).
@@ -87,7 +107,8 @@ Determine which agent to run in the target workspace (`agy` or `claude`):
 
 ## tmux Availability (check once, up front)
 
-Detect tmux before doing tmux-specific work:
+Detect tmux before doing tmux-specific work — via `capability:run-command`, which is also the
+first place a denied shell will surface:
 ```bash
 command -v tmux >/dev/null 2>&1 && echo "tmux: yes" || echo "tmux: no"
 ```
@@ -116,7 +137,8 @@ Inspect the invocation argument and route to a subcommand:
 | `list`, `ls` | **List** |
 | `attach`, `at` | **Attach** (rest = session/branch name) |
 | `remove`, `rm`, `delete` | **Remove** |
-| anything else that reads as a branch name — **ASCII, no whitespace** | **Create** (rest = branch name and optional `agy` / `claude` runtime flag) |
+| `create` (whole first token) | **Create** — rest = branch name, plus an optional **trailing** `agy` / `claude` runtime token (see Agent Runtime Selection) |
+| anything else that reads as a branch name — **ASCII, no whitespace** | **Create** (the whole argument is the branch name; this form takes no runtime token) |
 | anything else — **non-ASCII, or containing whitespace** | **Ask first** via `capability:ask-user`; do **NOT** create. See the guard below. |
 | empty | Ask the user which action (create / list / attach / remove) via `capability:ask-user` |
 
@@ -124,7 +146,9 @@ Inspect the invocation argument and route to a subcommand:
 > catch-all, so *any* unrecognized argument would otherwise become a new branch plus a
 > worktree directory and a tmux session — a side effect that is tedious to undo and easy
 > to trigger by a simple typo (`/worktree lst`) or by a non-English subcommand alias.
-> When the argument is non-ASCII or contains whitespace, treat it as **probably not a branch name**:
+> The guard covers the **catch-all** row only: an explicit `create` verb is unambiguous intent, so
+> `create <branch> agy` proceeds without asking even though it contains whitespace.
+> When a catch-all argument is non-ASCII or contains whitespace, treat it as **probably not a branch name**:
 > ask the user via `capability:ask-user` whether they meant a subcommand or genuinely want a branch
 > by that name, and proceed only on their answer. A non-ASCII branch name is perfectly legal in git,
 > so this is a confirmation, **not** a rejection.
@@ -138,9 +162,10 @@ Inspect the invocation argument and route to a subcommand:
 ROOT=$(git rev-parse --show-toplevel)
 REPO=$(basename "$ROOT")
 ```
-- **Branch name**: from the argument if given. If absent, ask the user for a branch
+- **Agent runtime**: resolve `AGENT_CMD` per the Agent Runtime Selection section above, and strip
+  the runtime token from the argument **first**, so it cannot leak into the branch name.
+- **Branch name**: the argument with that token removed. If absent, ask the user for a branch
   name via `capability:ask-user` (do not invent one silently).
-- **Agent runtime**: resolve `AGENT_CMD` per the Agent Runtime Selection section above.
 - **Slug**: sanitize the branch name for a filesystem path — replace `/` and spaces
   with `-` (e.g. `feature/foo bar` → `feature-foo-bar`).
 - **Target path**: sibling of the repo → `../<REPO>-<slug>`.
@@ -151,6 +176,8 @@ REPO=$(basename "$ROOT")
   (`git worktree list`). If it is, stop and explain.
 
 ### 3. Create the worktree
+Both forms run with `capability:run-command`, and this is the step that first changes state on
+disk — from here on, a halt must report what already exists (see `## Halting`).
 - New branch (default):
   ```bash
   git worktree add "../<REPO>-<slug>" -b "<branch>"
@@ -170,27 +197,56 @@ output, or arbitrary ignored files.
 .env.development
 .env.production
 .claude/settings.local.json
-.gemini/config.json
-.gemini/settings.json
 ```
-For each that exists, create the parent dir in the target and copy it. Report which
-files were copied (and that they are gitignored, so they will never be committed and
-will disappear when the worktree is removed).
+**Copy only what git actually ignores.** Membership in the list is a *permission*, not a
+*guarantee* — verify every candidate before copying it:
+```bash
+git -C "$ROOT" check-ignore -q <file>   # exit 0 = ignored, safe to copy
+```
+Skip anything that fails the check and say which entries were skipped. A file that git does **not**
+ignore arrives in the worktree as an untracked file, and the session this skill is about to start
+runs with `--dangerously-skip-permissions` — so a single `git add -A` in it would commit that file.
+That is the path by which a settings file holding an API key gets published, and it is why the
+check matters more than the list.
+
+For each entry that exists **and** passes the check, create the parent dir in the target and copy
+it. Report which files were copied (and that they are gitignored, so they will never be committed
+and will disappear when the worktree is removed).
+
+> **No Gemini/agy entry belongs in this list.** agy keeps its configuration machine-global —
+> `~/.gemini/config/` and `~/.gemini/antigravity-cli/settings.json` — so a new worktree inherits it
+> already, and there is no project-local `.gemini/config.json` or `.gemini/settings.json` for agy to
+> read. `references/converted-skills.md` records the same global-only rule for skill discovery.
 
 ### 5. Start a tmux session (if tmux is available)
 Resolve the absolute target path and a tmux-safe `SESSION` name, guard against a name
-collision, then start a **detached** session and launch `$AGENT_CMD` in it:
+collision, then start a **detached** session and launch the resolved agent in it.
+
+`AGENT_CMD` **must be assigned inside this same snippet.** Each command invocation is its own
+shell, so a value resolved in an earlier step does not survive into this one — substitute the
+literal string from Agent Runtime Selection step 4. An unset `AGENT_CMD` makes `send-keys` press a
+bare Enter, leaving a plain shell in a session this skill then reports as running an agent.
 ```bash
+AGENT_CMD='<agent> --dangerously-skip-permissions'   # literal, from Agent Runtime Selection
+
 TARGET=$(cd "../<REPO>-<slug>" && pwd)
 SESSION=$(printf '%s' "<REPO>-<slug>" | tr ' .:/' '----')
 
-if tmux has-session -t "$SESSION" 2>/dev/null; then
-  # Name already taken — append a short suffix and retry, or stop and report.
-  SESSION="${SESSION}-$(date +%H%M%S)"
-fi
+# Suffix until the name is actually free — a single suffix is not enough, because the
+# suffixed name can be taken too. Re-check every candidate; bail rather than loop forever.
+BASE="$SESSION"; n=2
+while tmux has-session -t "$SESSION" 2>/dev/null; do
+  SESSION="$BASE-$n"; n=$((n + 1))
+  if [ "$n" -gt 20 ]; then
+    echo "too many sessions named $BASE-*; stopping" >&2; exit 1
+  fi
+done
 
-tmux new-session -d -s "$SESSION" -c "$TARGET"   # detached, cwd = worktree
-tmux send-keys -t "$SESSION" "$AGENT_CMD" C-m   # pre-warm
+# The `||` is a safety guard, not style: if new-session fails, $SESSION is somebody
+# else's live session, and the send-keys below would type this command into it.
+tmux new-session -d -s "$SESSION" -c "$TARGET" \
+  || { echo "could not create session $SESSION; sending no keys" >&2; exit 1; }
+tmux send-keys -t "$SESSION" "$AGENT_CMD" C-m    # pre-warm — only ever into the session just created
 ```
 The session is now **live** with the selected agent running. It launches with
 **`--dangerously-skip-permissions`** so the parallel session never stalls on the
@@ -199,7 +255,8 @@ create/edit/write and bash run without confirmation. The trade-off is that the s
 **all** permission guards, so only use it in worktrees of repos you trust.
 - To make it safer instead, swap the flag for `--permission-mode acceptEdits` (Claude)
   or `--mode accept-edits` (agy).
-- If the user explicitly said they only want a shell, skip the `send-keys` line.
+- When there is no agent to launch — the binary was missing, or the user asked for a plain shell —
+  drop the `AGENT_CMD` and `send-keys` lines **together**, and report the session as a plain shell.
 
 ### 6. Hand off
 **With tmux** — the session is already running; print the attach command:
@@ -214,6 +271,14 @@ tmux switch-client -t <SESSION>     # or press Ctrl-b s and pick it
 ```bash
 cd ../<REPO>-<slug> && <agent> --dangerously-skip-permissions
 ```
+**If the selected agent's binary was missing** (Agent Runtime Selection step 3), print the bare
+`cd` instead — with tmux, the session is a plain shell; without it, there is nothing to launch:
+```bash
+cd ../<REPO>-<slug>
+```
+Say which agent was unavailable and how to install it, rather than handing over a command that
+will only fail.
+
 Either way, remind them: this new session is fully isolated; the current session's
 branch and uncommitted changes are untouched.
 
@@ -292,6 +357,7 @@ SESSION=$(tmux list-sessions -F '#{session_name}	#{session_path}' 2>/dev/null \
 - If none is found (or tmux absent), skip this step silently.
 
 ### 4. Remove and prune
+With `capability:run-command`:
 ```bash
 git worktree remove "<path>"        # add --force only if confirmed dirty
 git worktree prune
@@ -300,6 +366,42 @@ git worktree prune
 ### 5. Offer branch cleanup
 Ask via `capability:ask-user` whether to also delete the branch that worktree was on (`git branch -d <branch>`,
 or `-D` if unmerged and confirmed). Do not delete branches without asking.
+
+---
+
+## Halting
+
+`git`, `cp`, and `tmux` are this skill's only means of doing anything, so a shell capability that
+is missing or refused is not a degraded mode — there is no work left to do. **Stop and report with
+the contract's named message** (`../../references/runtime-tools.md` → `## Halting`); never narrate
+a worktree that was not created.
+
+| Condition | Message |
+|---|---|
+| The runtime provides no shell capability | `unavailable: run-command not provided by <runtime>` |
+| The shell exists but the call was refused | `denied: run-command requires permission not granted (e.g. agy headless -p auto-denies run_command)` |
+
+**The denied case is the expected one.** Under `agy -p`, `run_command` is auto-denied because
+headless mode cannot prompt — a scoped `permissions.allow` entry is not enough. Say which of the
+two occurred: a denial reads exactly like a missing capability, and the remedies differ (grant the
+permission or drop `-p`, versus run under a different runtime).
+
+**Do not borrow the tmux degrade.** "tmux absent → do the plain worktree flow" is correct, because
+git still works and a real workspace still gets built. A denied shell is the opposite case: nothing
+can be built, so the same reflex would produce a confident report of a workspace that does not
+exist.
+
+**A halt after step 3 must say what already exists.** Create is not atomic — it can have made a
+branch, a directory, and a tmux session before a later call is refused. List whichever were
+created, with the undo:
+
+| Created | Undo |
+|---|---|
+| branch | `git branch -d <branch>` |
+| worktree directory | `git worktree remove <path>` |
+| tmux session | `tmux kill-session -t <SESSION>` |
+
+A half-built workspace reported as a failure is recoverable; one reported as a success is not.
 
 ---
 
@@ -316,8 +418,13 @@ or `-D` if unmerged and confirmed). Do not delete branches without asking.
    manual paths) so they never stall on trust/approval prompts. This
    bypasses all permission guards; it is intended for trusted repos. The safer
    alternative is `--permission-mode acceptEdits` (Claude) or `--mode accept-edits` (agy).
-5. **Session names are tmux-safe and collision-checked** — strip `.`/`:`/`/`/spaces;
-   if the name is taken, suffix it. Correlate sessions to worktrees by **path**.
+   **Unless the binary is absent** — then no agent launches on either path, and the hand-off is a
+   bare `cd`; never print a launch command for a binary that is not installed.
+5. **Session names are tmux-safe and collision-checked** — strip `.`/`:`/`/`/spaces; if the name
+   is taken, suffix it and **re-check**, since the suffixed name can be taken too. Guard
+   `new-session` so `send-keys` can only ever reach the session it just created — typing into a
+   pre-existing session means typing into someone's live workspace. Correlate sessions to
+   worktrees by **path**.
 6. **Config copy is a fixed allowlist** — never copy `node_modules` or unknown ignored
    files; report exactly what was copied.
 7. **Removal is guarded** — check for uncommitted changes first; `--force` only after
@@ -326,3 +433,6 @@ or `-D` if unmerged and confirmed). Do not delete branches without asking.
 8. **Branches are never deleted silently** — always ask via `capability:ask-user`.
 9. **Keep output tight** — the user wants the workspace ready and the attach (or
    launch) command, not an essay.
+10. **A denied or missing shell halts the skill** — `capability:run-command` is the whole working
+    surface, so report `unavailable:` / `denied:` by name and list anything already created. Never
+    report a workspace that was not built. See `## Halting`.
