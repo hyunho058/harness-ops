@@ -21,6 +21,7 @@ makes the blocking hook deny every intermediate save of the rewrite.
 |---|---|
 | coherence-audit | resolve-harness-root, run-glob-overlap, read-declared-surface-schema, spawn-inline-checker |
 | check-harness | spawn-named-checker |
+| worktree | - |
 
 Listing `check-harness` also brings `agents/*.md` into lint scope, because its
 `spawn-named-checker` procedure feeds those bodies to the runtime as prompt text.
@@ -40,9 +41,9 @@ Listing `check-harness` also brings `agents/*.md` into lint scope, because its
   pinned script. `pilot-verify.sh` uses `--dangerously-skip-permissions` for its time-boxed
   verification run instead; see that script's header for the reasoning.
 
-## Not yet converted (11)
+## Not yet converted (10)
 
 `agent-orchestrate`, `autopilot`, `build-order`, `context-audit`, `decompose`, `loop`, `qa`,
-`requirements-interview`, `scaffold`, `specify`, `worktree`
+`requirements-interview`, `scaffold`, `specify`
 
 These are untouched by the gate until they are converted and listed.
