@@ -12,6 +12,14 @@ description: |
   Trigger phrases: "doc drift", "memory drift", "memory audit", "context drift",
   "docs audit", "document review", "document audit", "memory check",
   "outdated docs", "document conflict".
+allowed-tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - Write
+  - Edit
+  - AskUserQuestion
 ---
 
 # context-audit — Claude memory audit
@@ -104,13 +112,14 @@ Create an auto-fix PR? (Only for Outdated findings with a clear fix)
 
 ## Auto-fix (optional)
 
-Ask only after presenting the report summary:
+Ask via `AskUserQuestion` only after presenting the report summary:
 
 > "Found HIGH {h} findings. What would you like to do?
 > 1) Create PR with clear fixes only
 > 2) Report only"
 
-If chosen: create atomic commits per finding on a `docs/drift-fix-<timestamp>` branch, then `gh pr create`.
+If chosen: patch each drifted line with `Edit` (surgical, one finding at a time — not a
+whole-file `Write`), commit per finding on a `docs/drift-fix-<timestamp>` branch, then `gh pr create`.
 
 **Always exclude**: Conflicts (requires human judgment on which side is correct), Risky/Ambiguous (requires intent verification).
 
