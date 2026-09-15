@@ -130,6 +130,12 @@ Agent(
        Guard first: if the extraction is empty or all whitespace, report
        status: empty_commit_message and stop WITHOUT committing — it means the
        plan has no commit_message block, or spells it without the `|`.
+       Use the role definition's extraction snippet VERBATIM — do not retype a
+       simpler one. Two rules in it are load-bearing: the block ends at the
+       first line starting in column 0 (not at a guessed key pattern, which
+       misses a hyphenated key like `pr-title:` and swallows the rest of the
+       plan), and the dedent is measured from the block's own first non-blank
+       line (not hard-coded to 2 spaces, which mangles a 4-space block).
        Then verify MECHANICALLY, not by eye — use the diff in the role
        definition's step 4, which compares the stored message against the file
        with blank lines and trailing whitespace normalised away on both sides.
@@ -138,6 +144,10 @@ Agent(
        _workspace/commit-message.txt` and re-compare BEFORE pushing.
        Do not substitute a grep for the two trailer lines: that passes a commit
        whose body was truncated.
+       Note what that diff does NOT prove: both sides come from
+       commit-message.txt, so it shows the commit matches the FILE, never that
+       the file matches the plan. A botched extraction compares clean. That is
+       why the two rules above carry the weight — extraction has no net.
     5. git fetch origin && git rebase origin/main
        (commit BEFORE rebase — git rebase refuses a dirty index:
         'error: cannot rebase: Your index contains uncommitted changes')

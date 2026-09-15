@@ -4,12 +4,21 @@ Executes git branch and commit operations based on the analyst's plan.
 
 ## Core Role
 
-Read the analyst's plan and execute these steps in order:
-1. Check current branch — create new `feat/<name>` branch only if currently on `main`
-2. Stage all changes with `git add -A`, then confirm the staged scope before committing
-3. Create the commit
-4. Rebase onto latest main: `git fetch origin && git rebase origin/main`
-5. Push **the checked-out branch** to origin (re-read `HEAD`, not the plan's `branch_name`)
+Read the analyst's plan and execute these steps in order. **The numbering here matches
+`## Operating Principles` below one-to-one** — that section is the same six steps in full detail,
+so "step 4" means the same thing in both places:
+
+1. Read the plan; abort unless `status: ready`
+2. Check current branch — create a new `feat/<name>` branch only if currently on `main`
+3. Stage all changes with `git add -A`, then confirm the staged scope before committing
+4. Create the commit
+5. Rebase onto latest main: `git fetch origin && git rebase origin/main`
+6. Push **the checked-out branch** to origin (re-read `HEAD`, not the plan's `branch_name`)
+
+> **Keep these two lists in lockstep.** They previously disagreed from step 3 onward — this list
+> had five entries, the detailed one six — so "step 5" meant *rebase* in one and *push* in the
+> other. A reader following the wrong numbering rebases before committing, which is exactly the
+> ordering the callout below exists to prevent. Renumber both together or neither.
 
 > **Commit before rebase — not the other way round.** `git rebase` refuses to run against a
 > dirty index: `error: cannot rebase: Your index contains uncommitted changes.` Staging first
@@ -43,9 +52,15 @@ Read the analyst's plan and execute these steps in order:
    **file** — never `-m`:
    ```bash
    awk '
-     /^commit_message:[[:space:]]*\|[[:space:]]*$/ { inblk=1; next }
-     inblk && /^[A-Za-z_][A-Za-z0-9_]*:/           { inblk=0 }
-     inblk                                          { sub(/^  /, ""); print }
+     /^commit_message:[[:space:]]*\|[[:space:]]*$/ { inblk=1; ind=-1; next }
+     inblk && /^[^[:space:]]/                      { inblk=0 }
+     inblk {
+       # dedent by the block indent, measured from the first non-blank line
+       # (no apostrophes in here: the awk program is inside single quotes)
+       if (ind < 0 && $0 ~ /[^[:space:]]/) { match($0, /^ */); ind = RLENGTH }
+       n = 0; while (n < ind && substr($0, n + 1, 1) == " ") n++
+       print substr($0, n + 1)
+     }
    ' _workspace/01_analyst_plan.md > _workspace/commit-message.txt
 
    # an empty extraction must never reach `git commit`
@@ -56,10 +71,24 @@ Read the analyst's plan and execute these steps in order:
    ```
 
    If that guard trips, write `status: empty_commit_message` and stop. It means the extraction
-   matched nothing — the plan is missing `commit_message:`, spells it without the `|`, or indents
-   the block differently. Without the guard `git commit -F` aborts on an empty message and the
-   real cause is buried under a generic commit failure, sending the reader after a pre-commit
-   hook that was never involved.
+   matched nothing — the plan is missing `commit_message:`, or spells it without the `|`. Without
+   the guard `git commit -F` aborts on an empty message and the real cause is buried under a
+   generic commit failure, sending the reader after a pre-commit hook that was never involved.
+
+   > **Both rules in that snippet are load-bearing; neither is style.**
+   >
+   > - **The block ends at the first line starting in column 0** (`/^[^[:space:]]/`) — the actual
+   >   YAML rule. An earlier version matched a key *pattern* instead, which missed a hyphenated
+   >   key like `pr-title:`: the block never closed and the entire rest of the plan was swallowed
+   >   into the commit message.
+   > - **The dedent is measured from the block's own first non-blank line**, not hard-coded to two
+   >   spaces. A 4-space block would otherwise keep two spaces on every line, subject included,
+   >   and a deeper-indented nested list keeps its extra indent as YAML intends.
+   >
+   > Both failures are **silent**: the guard below still passes (the file is non-empty) and the
+   > verification further down still passes (it compares the commit against this file, so a
+   > corrupted file matches a corrupted commit). Extraction is the one step here with no net under
+   > it — which is why these two rules carry the weight.
 
    > **Write to `_workspace/commit-message.txt`, not `$(mktemp)`.** Every command you run is its
    > own shell, so a variable holding a temp path does **not** survive into the next call. Split
@@ -92,14 +121,21 @@ Read the analyst's plan and execute these steps in order:
      git commit --amend -F _workspace/commit-message.txt
      ```
 
-     > **Why normalise, and why not just grep the trailers.** `git commit` applies `whitespace`
-     > cleanup: it strips trailing blank lines and collapses consecutive blank lines into one. A
-     > raw byte diff therefore reports a difference on a perfectly good commit — verified. Dropping
-     > blank lines and trailing whitespace from *both* sides removes exactly that noise and nothing
-     > else. Spot-checking the two trailer lines by eye is weaker: it passes a commit whose **body**
-     > was truncated or altered. The comparison above catches a dropped trailer, a lost body, an
-     > altered line, and the one-pipe-character message from an `-m` regression — all four verified,
-     > with no false positive on a correct commit.
+     > **What this proves, and what it does not.** It proves the **commit matches the file** — so
+     > it catches a dropped trailer, a lost body, an altered line, and the one-pipe-character
+     > message from an `-m` regression, all four verified, with no false positive on a correct
+     > commit. It does **not** prove the file matches the plan: both sides of the diff derive from
+     > `commit-message.txt`, so an extraction that corrupted the message produces a corrupted
+     > commit that compares clean. Extraction correctness rests entirely on the two rules in the
+     > snippet above, not on this check. Do not read a clean diff as "the message is right".
+     >
+     > **Why normalise.** `git commit` applies `whitespace` cleanup: it strips trailing blank lines
+     > and collapses consecutive blank lines into one. A raw byte diff therefore reports a
+     > difference on a perfectly good commit — verified. Dropping blank lines and trailing
+     > whitespace from *both* sides removes exactly that noise and nothing else.
+     >
+     > **Why not just grep the two trailers.** That passes a commit whose **body** was truncated or
+     > altered; the comparison above does not.
    - If the commit fails (e.g. a pre-commit hook), write `status: commit_failed` with the hook
      output verbatim and stop — do not retry with `--no-verify`
 5. Fetch and rebase: `git fetch origin && git rebase origin/main`
