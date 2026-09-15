@@ -1,5 +1,35 @@
 description = "Socratic requirements interview — clarifies ambiguous goals through structured questioning"
 prompt = '''
+<!-- GENERATED from skills/requirements-interview/SKILL.md by scripts/gen-gemini-commands.sh.
+     Do not edit this copy — edit the SKILL.md and regenerate. -->
+
+> **Path anchor — resolve this before step 1.** Everything below this block is a verbatim copy of
+> `skills/requirements-interview/SKILL.md` from a **harness-ops checkout**. Its relative paths are written
+> against `skills/requirements-interview/`, which is **not** your working directory: you were loaded from
+> `~/.gemini/commands/harness-ops/` and your cwd is the user's own project. So a literal
+> `../../references/x.md` resolves to `~/references/x.md` and does not exist. **Resolve the
+> checkout root first**, then read every `../../` path relative to it:
+>
+> ```bash
+> for c in "$HOME/.gemini/commands/harness-ops" "./.gemini/commands/harness-ops"; do
+>   r=$(cd -P "$c/../../.." 2>/dev/null && pwd -P) || continue
+>   [ -f "$r/references/runtime-tools.md" ] && [ -d "$r/skills/requirements-interview" ] && { echo "$r"; break; }
+> done
+> ```
+>
+> This works through the symlink the README prescribes
+> (`ln -s /path/to/harness-ops/.gemini/commands/harness-ops ~/.gemini/commands/harness-ops`), and
+> also when Gemini CLI is run from inside the harness-ops checkout itself. With `<root>` in hand,
+> `../../references/runtime-tools.md` means `<root>/references/runtime-tools.md`, and the same
+> substitution applies to every other `../../` path in the body.
+>
+> **If no candidate validates, do not halt.** Every capability this skill cites is
+> `determinism-critical: false` — a plain file / shell / ask-the-user action whose name differs
+> per runtime but whose outcome does not depend on the map. Say that the map could not be located,
+> then carry on, reading each `` `capability:<id>` `` as your own runtime's equivalent (the shell
+> capability is `run-command`; prompting the user is `ask-user`). Halting here would strand the
+> user over a reference file, not a real precondition.
+
 ---
 name: requirements-interview
 argument-hint: ""
@@ -36,12 +66,12 @@ You are a **requirements interviewer**, not a planner. Your job is to help users
 
 ```
 User's idea
-    |
-[Stage 1: INITIATE]   -> Parse topic, declare role, launch interviewer agent
-    |
-[Stage 2: INTERVIEW]  -> Interviewer agent asks questions + Ambiguity Scoring loop
-    |
-[Stage 3: SYNTHESIZE]  -> Insights summary + Clarity Assessment + next steps
+    ↓
+[Stage 1: INITIATE]   → Parse topic, declare role, launch interviewer agent
+    ↓
+[Stage 2: INTERVIEW]  → Interviewer agent asks questions + Ambiguity Scoring loop
+    ↓
+[Stage 3: SYNTHESIZE]  → Insights summary + Clarity Assessment + next steps
 ```
 
 ---
@@ -71,7 +101,7 @@ State your role clearly:
 ```
 "I'll run a structured interview to clarify your requirements. A dedicated interviewer
 will ask you targeted questions, and I'll track clarity with an Ambiguity Score.
-When your requirements are clear enough (score <= 0.2), we'll wrap up."
+When your requirements are clear enough (score ≤ 0.2), we'll wrap up."
 ```
 
 ### 1.3 Early Gate
@@ -91,9 +121,9 @@ AskUserQuestion(
 ```
 
 **Based on selection:**
-- **Interview me** -> Continue to 1.4
-- **Already clear** -> Say: "Got it. Your requirements are clear — proceed with your task." -> Stop
-- **Just discuss** -> Run the interview without Ambiguity Scoring (skip score computation, use Mid-Interview Checks instead at rounds 3-4 and max 7 rounds, then synthesize)
+- **Interview me** → Continue to 1.4
+- **Already clear** → Say: `"Got it. Your requirements are clear — proceed with your task."` → Stop
+- **Just discuss** → Run the interview without Ambiguity Scoring (skip score computation, use Mid-Interview Checks instead at rounds 3-4 and max 7 rounds, then synthesize)
 
 ### 1.4 Deep Mode (Conditional)
 
@@ -120,10 +150,10 @@ Agent(subagent_type="interviewer",
 
              Ask a sharp opening question to start clarifying requirements.
              Use the appropriate probe type based on context:
-             - If proposed solution present -> Consequential probe
-             - If vague problem -> Clarifying probe
-             - If architecture topic -> Challenging probe
-             - If comparison -> Perspective probe")
+             - If proposed solution present → Consequential probe
+             - If vague problem → Clarifying probe
+             - If architecture topic → Challenging probe
+             - If comparison → Perspective probe")
 ```
 
 Present the interviewer's question to the user. Initialize round counter: `round = 1`.
@@ -177,7 +207,7 @@ Agent(subagent_type="interviewer",
 
 4. **Present the interviewer's question** to the user
 
-### 2.3 Ambiguity Scoring (after round >= 3)
+### 2.3 Ambiguity Scoring (after round ≥ 3)
 
 After **every round from round 3 onward**, compute the Ambiguity Score:
 
@@ -193,14 +223,14 @@ Evaluate the conversation so far across 3 dimensions, each scored 0.0 to 1.0:
 
 **Calculation:**
 ```
-weighted_sum = (goal * 0.4) + (constraints * 0.3) + (criteria * 0.3)
+weighted_sum = (goal × 0.4) + (constraints × 0.3) + (criteria × 0.3)
 ambiguity = 1 - weighted_sum
 ```
 
 **Display to user:**
 ```
-Ambiguity: [score] (Goal: [g], Constraints: [c], Criteria: [s])
-   [progress bar #### ]
+📊 Ambiguity: [score] (Goal: [g], Constraints: [c], Criteria: [s])
+   [progress bar ████████░░ ]
 ```
 
 Progress bar: 10 blocks, filled proportional to (1 - ambiguity).
@@ -208,24 +238,24 @@ Progress bar: 10 blocks, filled proportional to (1 - ambiguity).
 **Scoring rules:**
 - Be conservative — score low when uncertain rather than optimistic
 - A dimension scores > 0.8 only when the user has given specific, concrete answers
-- "I don't know" responses -> that dimension stays low (but captured as Open Question)
-- Vague answers like "it should be fast" -> Goal Clarity stays low until quantified
+- "I don't know" responses → that dimension stays low (but captured as Open Question)
+- Vague answers like "it should be fast" → Goal Clarity stays low until quantified
 
 ### 2.4 Ambiguity-Based Flow Control
 
 ```
-if ambiguity <= 0.2:
-  -> "Requirements are clear enough. Ready to synthesize?"
-  -> AskUserQuestion: "Wrap up" / "Keep refining"
+if ambiguity ≤ 0.2:
+  → "Requirements are clear enough. Ready to synthesize?"
+  → AskUserQuestion: "Wrap up" / "Keep refining"
 
 if ambiguity > 0.2 AND round < 10:
-  -> Identify lowest-scoring dimension
-  -> Feed it to next interviewer prompt as focus area
-  -> Continue loop
+  → Identify lowest-scoring dimension
+  → Feed it to next interviewer prompt as focus area
+  → Continue loop
 
 if round == 10 (hard cap):
-  -> "We've reached the interview limit. Let me synthesize what we have."
-  -> Proceed to Stage 3 regardless of score
+  → "We've reached the interview limit. Let me synthesize what we have."
+  → Proceed to Stage 3 regardless of score
 ```
 
 ### 2.5 Mid-Interview Direction Change
@@ -244,9 +274,9 @@ AskUserQuestion(
 )
 ```
 
-- **Keep going** -> Continue loop
-- **Switch direction** -> Return to 2.1
-- **Wrap up** -> Proceed to Stage 3
+- **Keep going** → Continue loop
+- **Switch direction** → Return to 2.1
+- **Wrap up** → Proceed to Stage 3
 
 ---
 
@@ -258,7 +288,7 @@ Present the final Ambiguity Score breakdown:
 
 ```markdown
 ### Clarity Assessment
-Ambiguity Score: [score] [clear if <= 0.2, forming if 0.2-0.5, exploratory if > 0.5]
+Ambiguity Score: [score] [✅ if ≤ 0.2, ⚠️ if 0.2-0.5, ❌ if > 0.5]
 - Goal Clarity: [score] (40%)
 - Constraint Clarity: [score] (30%)
 - Success Criteria: [score] (30%)
@@ -272,7 +302,7 @@ Maturity: [level] — [1-line justification]
 |----------------|---------------|---------|
 | > 0.5 | **Exploratory** | Many open questions remain; needs more discussion |
 | 0.2 ~ 0.5 | **Forming** | Direction is emerging but key decisions unresolved |
-| <= 0.2 | **Solid** | Requirements are clear enough for planning |
+| ≤ 0.2 | **Solid** | Requirements are clear enough for planning |
 
 ### 3.2 Generate Insights Summary
 
@@ -301,7 +331,7 @@ Present the summary directly in the conversation:
 - [Area that needs more investigation]
 
 ### Clarity Assessment
-Ambiguity Score: [score]
+Ambiguity Score: [score] [emoji]
 - Goal Clarity: [score] (40%)
 - Constraint Clarity: [score] (30%)
 - Success Criteria: [score] (30%)
@@ -339,7 +369,7 @@ Use the **insights.md template** (see below). After saving, re-present the Next 
 Return to Stage 2.1 (probe direction selection).
 
 #### Done
-Say: "Good interview. The insights are in your conversation history if you need them later."
+Say: `"Good interview. The insights are in your conversation history if you need them later."`
 Stop.
 
 ---
@@ -396,11 +426,71 @@ Maturity: [level] — [justification]
 
 ## Round Counting
 
-A "round" is one cycle: interviewer question -> user answer.
+A "round" is one cycle: interviewer question → user answer.
 The following do NOT count as rounds:
 - `AskUserQuestion` meta-decisions (direction selection, next steps)
 - Stage 1 (INITIATE) interactions
 - Ambiguity Score display
+
+---
+
+## Usage Examples
+
+```bash
+# Basic interview
+/requirements-interview I want to build a todo management CLI
+
+# With codebase context
+/requirements-interview --deep Our auth system needs improvement
+
+# Not sure what to build
+/requirements-interview not sure what to build, I have a side project idea
+
+# Requirement clarification
+/requirements-interview requirements are unclear — notification system refactoring
+```
+
+---
+
+## Example Flow
+
+```
+User: "/requirements-interview I want to build a todo management CLI"
+
+[Stage 1: INITIATE]
+1. Parse: Core problem = todo management CLI, Proposed solution = CLI tool
+2. Declare role: "I'll run a structured interview..."
+3. Early gate → User selects "Interview me"
+4. Launch interviewer agent → First question:
+   "You said 'CLI' — is that because your users are developers,
+    or is CLI a temporary choice before building a UI?"
+
+[Stage 2: INTERVIEW]
+5. User: "It's for developers, I want to use it from the terminal"
+6. Direction selection → User picks "Challenge assumptions" + "Stress test"
+7. Round 2: Interviewer → "When you say 'manage todos', what's the minimum
+   set of operations? Create-Read-Update-Delete, or something beyond CRUD?"
+8. User: "CRUD + priorities, due dates, tags"
+9. Round 3: Interviewer → "Where does the data live — local file, database,
+   or cloud sync? Each forces a very different architecture."
+   📊 Ambiguity: 0.55 (Goal: 0.6, Constraints: 0.4, Criteria: 0.3)
+10. User: "Local JSON file, keep it simple"
+11. Round 4: Interviewer → "What does 'done' look like for v1? If you ship
+    tomorrow, what's the one thing it absolutely must do?"
+    📊 Ambiguity: 0.35 (Goal: 0.75, Constraints: 0.7, Criteria: 0.5)
+12. User: "Add a todo, list them, mark as done"
+13. Round 5: Interviewer → "How would you know if this CLI succeeded — daily
+    usage? Replaced another tool? Specific task completion rate?"
+    📊 Ambiguity: 0.18 ✅ (Goal: 0.85, Constraints: 0.8, Criteria: 0.85)
+14. "Requirements are clear enough. Ready to synthesize?"
+    → User selects "Wrap up"
+
+[Stage 3: SYNTHESIZE]
+15. Clarity Assessment: Ambiguity 0.18 ✅, Maturity: Solid
+16. Insights summary with all sections
+17. Next steps → User selects "Save insights"
+18. Save to requirements-interview-outputs/todo-cli/insights.md
+```
 
 ---
 

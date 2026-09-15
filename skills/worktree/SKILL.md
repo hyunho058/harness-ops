@@ -228,10 +228,21 @@ output, or arbitrary ignored files.
 .claude/settings.local.json
 ```
 **Copy only what git actually ignores.** Membership in the list is a *permission*, not a
-*guarantee* — verify every candidate before copying it:
+*guarantee* — verify every candidate before copying it. `ROOT` does not survive from step 1 (each
+call is its own shell), so recompute it in the same snippet that uses it — the same way steps 3
+and 5 recompute `PARENT`:
 ```bash
-git -C "$ROOT" check-ignore -q <file>   # exit 0 = ignored, safe to copy
+ROOT=$(git rev-parse --show-toplevel)    # recompute — step 1's value is gone
+git -C "$ROOT" check-ignore -q <file>    # exit 0 = ignored, safe to copy
 ```
+> **Why the recompute is load-bearing here and not merely tidy.** An unset `ROOT` expands to the
+> empty string, and `git -C ""` is a documented no-op: the check silently runs against the tool
+> call's *current directory* instead of the repo. Invoked from inside the checkout it happens to
+> agree; invoked from anywhere else it fails with `fatal: not a git repository` (exit 128), which
+> the `exit 0 = ignored` test in that snippet reads as **not ignored** — so every `.env` and
+> `.claude/settings.local.json` is skipped and the new worktree starts with no local config, the
+> one outcome this step exists to prevent. Both behaviours verified.
+
 Skip anything that fails the check and say which entries were skipped. A file that git does **not**
 ignore arrives in the worktree as an untracked file, and the session this skill is about to start
 runs with `--dangerously-skip-permissions` — so a single `git add -A` in it would commit that file.

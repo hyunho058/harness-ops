@@ -64,6 +64,8 @@ Agent(
 
     Required output file format:
       branch_name: feat/short-description
+      files: |
+        <every changed path, one bare path per line, no status prefix>
       commit_message: |
         type(scope): description
 
@@ -102,6 +104,8 @@ Agent(
 
     Task: read _workspace/01_analyst_plan.md and execute the git workflow.
     Project root: <CWD>
+    Scope: <the files the user asked to commit — an explicit path/glob list, or the
+            literal 'all changes in the working tree' when they asked for everything>
 
     Steps:
     1. Read _workspace/01_analyst_plan.md
@@ -109,8 +113,17 @@ Agent(
        - If 'main': git checkout -b <branch_name>
        - Otherwise: stay on current branch and IGNORE the plan's branch_name
     3. git add -A, then CONFIRM SCOPE: run `git status --short` and compare
-       the staged set against the scope stated above. If anything outside it
-       is staged, report status: unexpected_scope, do NOT commit, and stop.
+       the staged set against the `Scope:` line above — that line, not the
+       plan, is the reference set (the plan carries the message, never the
+       user's intended file scope). Fall back to the plan's `files:` list only
+       if no Scope line was given. If NEITHER exists, report
+       status: missing_scope, do NOT commit, and stop: never treat "whatever
+       git add -A staged" as the scope, which compares the staged set against
+       itself and passes unconditionally. If anything outside the reference
+       set is staged, report status: unexpected_scope, do NOT commit, and stop.
+       List the staged paths in the report either way — `all changes in the
+       working tree` is a legitimate scope but admits everything, so the report
+       is where a human sees what it let through.
        Use -A, not `git add .` — the latter stages only the subtree below the
        current directory, so running from a subdirectory silently commits a
        subset and makes this very check look clean.
@@ -220,6 +233,7 @@ Read all three workspace files and report to the user:
 | Error | Response |
 |-------|----------|
 | Nothing to commit | Stop at Phase 0 |
+| `missing_scope` | No scope reached the operator — the Phase 3 prompt had no `Scope:` line and the plan no `files:`. Nothing was committed. Re-invoke Phase 3 with the scope stated |
 | `unexpected_scope` | Staged set exceeded the stated scope. Nothing was committed — say so, and list the unexpected paths |
 | `empty_commit_message` | The `commit_message` block extracted to nothing. Nothing was committed. Point at `_workspace/01_analyst_plan.md`: the block is missing, or written without `\|` |
 | Message verification differs | Operator amends with `-F` and re-compares; if it still differs, report as `commit_failed` with the diff |
@@ -271,6 +285,22 @@ name instead fails with `error: src refspec feat/remove-command-wrappers does no
 leaving the commit unpushed and the PR unchanged — and if a local branch by that name happens to
 exist, the push succeeds on the **wrong** branch, publishing unrelated work while the user's commit
 stays local.
+
+### Scope narrower than the working tree
+
+1. User says "commit the worktree skill fix"; the tree also holds unrelated edits to `scripts/`
+2. Orchestrator writes `Scope: skills/worktree/**` into the Phase 3 prompt
+3. git-operator → `git add -A` stages both; `git status --short` shows `scripts/` outside the scope
+4. Operator writes `status: unexpected_scope` listing the `scripts/` paths and does **not** commit
+5. Report: "Nothing was committed. These staged paths are outside the scope you asked for: …"
+
+**The regression this guards:** the guard previously said to compare against "the scope stated
+above" while nothing above stated one — the Phase 3 prompt carried only the task and project root,
+and the plan's keys were `branch_name` / `commit_message` / `pr_title` / `pr_body` / `status`. With
+no reference set the check resolves either way and both ways are wrong: compare against the staged
+set itself and it passes unconditionally (a no-op guard that *reports* success, which is worse than
+no guard), or treat the absence as a violation and every commit fails. The `Scope:` line is what
+makes it a real comparison, and `missing_scope` is what keeps the undefined case loud.
 
 ### Error path: rebase conflict
 

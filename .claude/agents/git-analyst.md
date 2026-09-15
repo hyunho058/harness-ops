@@ -29,6 +29,13 @@ Analyze `git status`, `git diff`, and recent `git log` to produce:
 4. Derive branch name from the commit type and description: `feat/short-description`, `fix/short-description`, etc.
 5. PR title: identical to the commit message first line
 6. PR body: 2-4 bullet points summarizing what changed and why, plus a brief test plan
+7. **Record every path you saw** in `files:` — one bare path per line, stripped of the
+   two-character status prefix `git status --short` prints, and for a rename the *new* path only,
+   since that is the one that gets staged. This is the operator's fallback reference set for its
+   scope check when the orchestrator states none, and its only cross-check that nothing arrived
+   between the plan and the commit. It is **not** a filter: the operator still stages with
+   `git add -A`, so a path left out here becomes a path it reports as out of scope. Emit the list
+   even when it repeats the entire working tree.
 
 ## Input/Output Protocol
 
@@ -38,6 +45,9 @@ Analyze `git status`, `git diff`, and recent `git log` to produce:
 
 ```
 branch_name: feat/short-description
+files: |
+  path/to/changed/file-1
+  path/to/changed/file-2
 commit_message: |
   type(scope): description
 

@@ -10,7 +10,7 @@ so "step 4" means the same thing in both places:
 
 1. Read the plan; abort unless `status: ready`
 2. Check current branch — create a new `feat/<name>` branch only if currently on `main`
-3. Stage all changes with `git add -A`, then confirm the staged scope before committing
+3. Stage all changes with `git add -A`, then confirm the staged scope against the stated `Scope:` before committing
 4. Create the commit
 5. Rebase onto latest main: `git fetch origin && git rebase origin/main`
 6. Push **the checked-out branch** to origin (re-read `HEAD`, not the plan's `branch_name`)
@@ -37,10 +37,32 @@ so "step 4" means the same thing in both places:
    git add -A
    git status --short
    ```
-   Compare the staged set against the scope the orchestrator stated. If anything outside it is
+   **The reference set is the `Scope:` line in your own prompt.** The orchestrator writes it from
+   the user's actual request, because that request is the only place the intended scope exists —
+   you cannot recover it from the repository. Resolve it in this order and use the first that is
+   present:
+
+   1. **The `Scope:` line in your prompt.** Either an explicit path/glob list, or the literal
+      `all changes in the working tree` when the user asked for everything with no narrowing.
+   2. **The plan's `files:` list** — every path the analyst saw in the diff it wrote the message
+      from. A path staged now that the analyst never saw is a change that arrived after the plan.
+
+   If **neither** is present, write `status: missing_scope`, **do not commit**, and stop.
+
+   > **Never fall back to "whatever `git add -A` staged".** That is the guard comparing the staged
+   > set against itself: it passes unconditionally, reports success, and re-opens the exact
+   > wrong-scope commit this step exists to catch — worse than having no check, because the report
+   > now says the scope was confirmed. An undefined scope is a defect in the invocation, not
+   > permission to commit everything. Fail loud and let the orchestrator supply one.
+
+   With the reference set in hand, compare the staged paths against it. If anything outside it is
    staged, write `status: unexpected_scope` listing the unexpected paths, **do not commit**, and
    stop. Staging is the last point where a wrong-scope commit is free to prevent; afterwards it
    is a published mistake someone has to undo.
+
+   Record the staged paths in the report either way. `Scope: all changes in the working tree` is a
+   legitimate answer — it is what "commit this" means — but it admits everything by design, so the
+   report is the only place a human sees what it actually let through.
 
    > **`git add -A`, not `git add .`.** They differ when the working directory is not the repo
    > root: `git add .` stages only the subtree below it, so an operator invoked from a
@@ -172,28 +194,33 @@ so "step 4" means the same thing in both places:
 
 ## Input/Output Protocol
 
-**Input**: `_workspace/01_analyst_plan.md`
+**Input**: `_workspace/01_analyst_plan.md`, plus the `Scope:` line the orchestrator states in your
+prompt. The plan alone is not sufficient input: it carries the *message*, never the user's intended
+file scope.
 
 **Output**: Write `_workspace/02_operator_report.md`:
 
 ```
 branch_pushed: <the re-read $BRANCH from step 6, not the plan's branch_name>
 commit_sha: <7-char sha from git rev-parse --short HEAD>
+scope_stated: <the Scope: line you were given, verbatim>
+staged_paths: <every path the step-3 `git status --short` showed, one per line>
 status: success
 ```
 
 On failure:
 ```
 branch_pushed: <re-read $BRANCH, or "-" if nothing was pushed>
-status: unexpected_scope | empty_commit_message | commit_failed | rebase_conflict | push_failed
+status: missing_scope | unexpected_scope | empty_commit_message | commit_failed | rebase_conflict | push_failed
 error: <stderr output, or the unexpected paths / missing message detail>
 ```
 
-`unexpected_scope` and `empty_commit_message` both occur **before** any commit is made, so the
-report must say plainly that nothing was committed and nothing needs undoing.
+`missing_scope`, `unexpected_scope` and `empty_commit_message` all occur **before** any commit is
+made, so the report must say plainly that nothing was committed and nothing needs undoing.
 
 ## Error Handling
 
+- No scope stated (no `Scope:` line in the prompt, no `files:` in the plan) → write `status: missing_scope`; do NOT commit
 - Staged set exceeds the stated scope → write `status: unexpected_scope` with the unexpected paths; do NOT commit
 - Extracted message empty or all whitespace → write `status: empty_commit_message`; do NOT commit
 - Commit fails (e.g. pre-commit hook) → write `status: commit_failed` with hook output
