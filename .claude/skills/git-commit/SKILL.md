@@ -108,19 +108,36 @@ Agent(
     2. Check current branch (git rev-parse --abbrev-ref HEAD)
        - If 'main': git checkout -b <branch_name>
        - Otherwise: stay on current branch and IGNORE the plan's branch_name
-    3. git add .
+    3. git add -A, then CONFIRM SCOPE: run `git status --short` and compare
+       the staged set against the scope stated above. If anything outside it
+       is staged, report status: unexpected_scope, do NOT commit, and stop.
+       Use -A, not `git add .` — the latter stages only the subtree below the
+       current directory, so running from a subdirectory silently commits a
+       subset and makes this very check look clean.
     4. Commit from a FILE, never with -m. commit_message is a YAML block
        scalar (commit_message: |) — use the extraction snippet in step 4 of
-       the role definition verbatim: strip the 2-space indent into a temp
-       file, then `git commit -F` that file.
+       the role definition verbatim: strip the 2-space indent into
+       _workspace/commit-message.txt, then `git commit -F` that file.
+       Use that fixed path, NOT $(mktemp): each command runs in its own
+       shell, so a variable holding a temp path is gone by the next call —
+       including the amend fallback, which is the one recovery path that
+       needs the file. _workspace*/ is gitignored, so it is never committed.
        Reading commit_message as a single line does NOT yield the subject: it
        yields the block indicator, the literal pipe character. Committing that
        gives a commit whose whole message is that one character — subject,
        body and trailers all gone. -m also exposes backticks, $ and quotes in
        the message to shell expansion.
-       Then verify `git log -1 --format=%B` contains the body and every
-       trailer line from the plan. If any is missing, amend with -F and the
-       same file, and re-check BEFORE pushing.
+       Guard first: if the extraction is empty or all whitespace, report
+       status: empty_commit_message and stop WITHOUT committing — it means the
+       plan has no commit_message block, or spells it without the `|`.
+       Then verify MECHANICALLY, not by eye — use the diff in the role
+       definition's step 4, which compares the stored message against the file
+       with blank lines and trailing whitespace normalised away on both sides.
+       Empty output means every line survived; any output is the exact
+       discrepancy. If it differs, `git commit --amend -F
+       _workspace/commit-message.txt` and re-compare BEFORE pushing.
+       Do not substitute a grep for the two trailer lines: that passes a commit
+       whose body was truncated.
     5. git fetch origin && git rebase origin/main
        (commit BEFORE rebase — git rebase refuses a dirty index:
         'error: cannot rebase: Your index contains uncommitted changes')
@@ -193,6 +210,9 @@ Read all three workspace files and report to the user:
 | Error | Response |
 |-------|----------|
 | Nothing to commit | Stop at Phase 0 |
+| `unexpected_scope` | Staged set exceeded the stated scope. Nothing was committed — say so, and list the unexpected paths |
+| `empty_commit_message` | The `commit_message` block extracted to nothing. Nothing was committed. Point at `_workspace/01_analyst_plan.md`: the block is missing, or written without `\|` |
+| Message verification differs | Operator amends with `-F` and re-compares; if it still differs, report as `commit_failed` with the diff |
 | Rebase conflict | Abort the rebase; report files in conflict. The commit is already made and survives the abort — say so, so the user does not fear lost work |
 | Push rejected | Report rejection reason; never force-push |
 | `gh` not authenticated | Suggest `gh auth login` |
