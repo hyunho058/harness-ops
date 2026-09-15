@@ -61,6 +61,10 @@ Agent(
 
     Task: analyze the current git state and write _workspace/01_analyst_plan.md.
     Project root: <CWD>
+    Trailers to reproduce verbatim as the last lines of the commit_message block:
+      <paste this session's attribution trailers here, byte for byte — typically a
+       Co-Authored-By: line and a Claude-Session: line. If this session provides
+       none, write the single word: none>
 
     Required output file format:
       branch_name: feat/short-description
@@ -71,7 +75,7 @@ Agent(
 
         Optional body explaining why.
 
-        <any attribution trailers this session requires, verbatim>
+        <the Trailers given above, verbatim — never invented, never a hard-coded model name>
       pr_title: type(scope): description
       pr_body: |
         ## Summary
@@ -152,9 +156,15 @@ Agent(
        Then verify MECHANICALLY, not by eye — use the diff in the role
        definition's step 4, which compares the stored message against the file
        with blank lines and trailing whitespace normalised away on both sides.
-       Empty output means every line survived; any output is the exact
-       discrepancy. If it differs, `git commit --amend -F
-       _workspace/commit-message.txt` and re-compare BEFORE pushing.
+       Read it by WHICH SIDE the differing lines are on. Empty output passes.
+       Output with only `>` lines also PASSES — every intended line survived
+       and a commit-msg hook appended to it; record the added lines. Only a
+       `<` line is a failure: a line went missing or was altered. Then
+       `git commit --amend -F _workspace/commit-message.txt` and re-compare
+       BEFORE pushing; if a `<` line survives the amend, report commit_failed.
+       Never report commit_failed for a non-empty diff that has no `<` line —
+       a hook that appends reproduces the same diff after every amend, so that
+       rule reports failure forever for a commit that is sitting on HEAD.
        Do not substitute a grep for the two trailer lines: that passes a commit
        whose body was truncated.
        Note what that diff does NOT prove: both sides come from
@@ -167,7 +177,11 @@ Agent(
        (re-read the sha after this — rebasing rewrites the commit)
     6. Push the branch that is actually checked out — re-read it with
        `git rev-parse --abbrev-ref HEAD` and push THAT, never the plan's
-       branch_name.
+       branch_name. If that re-read returns the literal string `HEAD`, the
+       checkout is DETACHED: report status: detached_head with the short sha,
+       do NOT push. `git push -u origin HEAD` is refused ("not a full
+       refname"), and the commit sits on no branch, so say it exists and can
+       be rescued with `git branch <name> <sha>`.
        Step 2 only checks out <branch_name> when starting from main. On any
        other branch it keeps the current one, while the analyst still proposes
        a feat/<short-description> name — usually a DIFFERENT one. In
@@ -236,7 +250,9 @@ Read all three workspace files and report to the user:
 | `missing_scope` | No scope reached the operator — the Phase 3 prompt had no `Scope:` line and the plan no `files:`. Nothing was committed. Re-invoke Phase 3 with the scope stated |
 | `unexpected_scope` | Staged set exceeded the stated scope. Nothing was committed — say so, and list the unexpected paths |
 | `empty_commit_message` | The `commit_message` block extracted to nothing. Nothing was committed. Point at `_workspace/01_analyst_plan.md`: the block is missing, or written without `\|` |
-| Message verification differs | Operator amends with `-F` and re-compares; if it still differs, report as `commit_failed` with the diff |
+| Message verification shows `<` lines | A line of the message is missing or altered. Operator amends with `-F` and re-compares; if a `<` line survives, report `commit_failed` with the diff |
+| Message verification shows only `>` lines | A `commit-msg` hook appended to the message. This is a **pass** — report the commit as successful and mention the added lines |
+| `detached_head` | `HEAD` is not on a branch. The commit was made and nothing was pushed. Give the short sha and tell the user to run `git branch <name> <sha>` before checking anything else out |
 | Rebase conflict | Abort the rebase; report files in conflict. The commit is already made and survives the abort — say so, so the user does not fear lost work |
 | Push rejected | Report rejection reason; never force-push |
 | `gh` not authenticated | Suggest `gh auth login` |
@@ -270,7 +286,13 @@ When the user says "retry push", "redo PR", or "fix the commit message":
 
 **The regression this guards** (verified): reading `commit_message` as a single line yields the
 literal `|`, and `git commit -m '|'` produces a commit whose entire message is one pipe character.
-`-m` also exposes backticks, `$` and quotes in the message to shell expansion.
+
+**Be exact about the second reason, or it discredits the first.** `-m` is not unconditionally
+unsafe: `git commit -m "$(cat <<'EOF' … EOF)"` with the delimiter **quoted** reproduces backticks,
+`$HOME`, `$(…)` and both quote kinds byte for byte — tested. What does expand, also tested, is an
+**unquoted** `<<EOF` (runs `$(…)` while building the heredoc) and a direct `-m "…"` (turns `$HOME`
+into a path). So `-F` wins because it takes the requirement to remember that distinction off the
+table entirely, and because the message then exists as a file the amend fallback can re-read.
 
 ### Already on a feature branch (the plan's name must not be pushed)
 
@@ -301,6 +323,21 @@ no reference set the check resolves either way and both ways are wrong: compare 
 set itself and it passes unconditionally (a no-op guard that *reports* success, which is worse than
 no guard), or treat the absence as a violation and every commit fails. The `Scope:` line is what
 makes it a real comparison, and `missing_scope` is what keeps the undefined case loud.
+
+### Error path: detached HEAD
+
+1. The user's checkout is detached — an interrupted rebase, a `git checkout <sha>`, a bisect
+2. git-operator → stages, commits, rebases; the commit is real and on `HEAD`
+3. Step 6 re-reads the branch and gets the literal `HEAD`, so it writes `status: detached_head`
+   with the short sha and does **not** push
+4. Phase 4 skipped; report: "Commit `a1b2c3d` was made, but `HEAD` is detached, so it is on no
+   branch and nothing was pushed. Run `git branch <name> a1b2c3d` to keep it before checking
+   anything else out."
+
+**The regression this guards** (verified against a real remote): `git rev-parse --abbrev-ref HEAD`
+returns the string `HEAD` when detached, so the push becomes `git push -u origin HEAD` and git
+refuses it with *"The destination you provided is not a full refname"*. Without the guard the
+operator reports a generic `push_failed`, and the commit stays reachable only through the reflog.
 
 ### Error path: rebase conflict
 

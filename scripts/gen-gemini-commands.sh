@@ -27,7 +27,10 @@
 #
 # USAGE
 #   gen-gemini-commands.sh              regenerate every toml that has a SKILL.md
-#   gen-gemini-commands.sh <skill>...   regenerate just these
+#   gen-gemini-commands.sh <skill>...   regenerate just these, CREATING the toml
+#                                       if it does not exist yet (the description
+#                                       is derived from the SKILL.md frontmatter
+#                                       for review; a hand-written one is kept)
 #   gen-gemini-commands.sh --check      exit 1 if any toml is stale (no writes)
 #
 # EXIT
@@ -55,11 +58,9 @@ note() { printf '%s\n' "$*" >&2; }
 # capability to the map cannot silently mis-classify it here.
 # ---------------------------------------------------------------------------
 
-canonical_ids() {
-  awk '/BEGIN CANONICAL-IDS/{f=1;next} /END CANONICAL-IDS/{f=0} f' "$MAP" \
-    | tr -d '`' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-    | grep -E '^[a-z][a-z0-9-]*$' || true
-}
+# canonical_ids and cited_ids live in scripts/lib/capability-map.sh — the linter
+# needs the same two readers, and two copies of one parser drift apart.
+. "$SCRIPT_DIR/lib/capability-map.sh"
 
 # ids in the General capabilities table (determinism-critical: false)
 general_ids() {
@@ -80,10 +81,6 @@ critical_ids() {
   canonical_ids | while read -r id; do
     printf '%s\n' "$gen" | grep -qx "$id" || printf '%s\n' "$id"
   done
-}
-
-cited_ids() {
-  grep -oE 'capability:[a-z][a-z0-9-]*' "$1" | sed 's/^capability://' | sort -u || true
 }
 
 # cited_critical <skill-md> — the cited ids that are determinism-critical
@@ -152,10 +149,50 @@ PRE
 # generation
 # ---------------------------------------------------------------------------
 
-# existing_description <toml> — reuse the hand-written description line
+# existing_description <toml> — reuse the hand-written description line.
+# The curated one-liners in the tomls are shorter and better than anything
+# derivable, so an existing line always wins.
 existing_description() {
   [ -f "$1" ] || return 0
   head -1 "$1" | grep -q '^description = ' && head -1 "$1" || true
+}
+
+# derived_description <skill-md> — BOOTSTRAP fallback for a toml that does not
+# exist yet. Flattens the frontmatter `description:` (block scalar or inline) to
+# one line and truncates it on a word boundary.
+#
+# Truncation, not first-sentence detection, is deliberate: these descriptions are
+# dense with paths, so the obvious "cut at the first '. '" rule cuts
+# `specs/<feature>/spec.md files` in half at the `.md`. A predictable trim the
+# author then edits beats a clever rule that is wrong in a way nobody notices.
+derived_description() {
+  [ -f "$1" ] || return 0
+  awk '
+    NR==1 && $0=="---"        { fm=1; next }
+    fm && /^---[[:space:]]*$/ { exit }
+    fm && /^description:/ {
+      line=$0; sub(/^description:[[:space:]]*/, "", line)
+      if (line ~ /^[|>]-?[[:space:]]*$/) { blk=1; next }
+      printf "%s", line; exit
+    }
+    blk && /^[A-Za-z_-]+:/ { exit }          # next frontmatter key closes the block
+    blk {
+      sub(/^[[:space:]]+/, "", $0)
+      if ($0 != "") printf "%s ", $0
+    }
+  ' "$1" \
+    | sed -e 's/^"//' -e 's/"$//' -e 's/[[:space:]]\{1,\}/ /g' -e 's/[[:space:]]*$//' \
+    | awk '{
+        if (length($0) <= 160) { print; exit }
+        out=""
+        n=split($0, w, " ")
+        for (i=1; i<=n; i++) {
+          if (length(out) + length(w[i]) + 1 > 160) break
+          out = (out == "" ? w[i] : out " " w[i])
+        }
+        print out
+      }' \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
 generate() {
@@ -174,8 +211,13 @@ generate() {
 
   desc=$(existing_description "$toml")
   if [ -z "$desc" ]; then
-    note "$skill: no existing description line in $toml — add one by hand first"
-    return 1
+    body=$(derived_description "$md")
+    if [ -z "$body" ]; then
+      note "$skill: no description in $toml and none in the SKILL.md frontmatter"
+      return 1
+    fi
+    desc="description = \"$body\""
+    note "$skill: bootstrapped description from SKILL.md frontmatter — review and refine it"
   fi
 
   crit=$(cited_critical "$md")
@@ -194,7 +236,11 @@ generate() {
 # dispatch
 # ---------------------------------------------------------------------------
 
-# every skill that already has a toml
+# every skill that already has a toml.
+#
+# Deliberately NOT every skill with a SKILL.md: a bare run and `--check` must not
+# start demanding tomls for skills nobody has decided to expose as Gemini
+# commands. Bootstrapping a new one is an explicit act — name the skill.
 all_skills() {
   for f in "$CMD_DIR"/*.toml; do
     [ -f "$f" ] || continue
@@ -237,7 +283,15 @@ if [ "$mode" = check ]; then
     note "$stale toml file(s) out of date — run scripts/gen-gemini-commands.sh"
     exit 1
   fi
-  note "all embedded Gemini commands match their SKILL.md"
+  # Only claim a clean sweep when nothing failed to generate. A skill that could
+  # not be generated at all leaves `stale` at 0, so the old unconditional line
+  # printed "all ... match" next to its own error and exited 1 — a summary that
+  # contradicted the exit status is worse than no summary.
+  if [ "$rc" -eq 0 ]; then
+    note "all embedded Gemini commands match their SKILL.md"
+  else
+    note "checked what could be generated; some skills failed above"
+  fi
 fi
 
 exit "$rc"
