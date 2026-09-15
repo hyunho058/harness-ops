@@ -17,6 +17,15 @@ Analyze `git status`, `git diff`, and recent `git log` to produce:
    - Format: `<type>(<scope>): <description>`
    - Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `style`
    - Keep the description under 72 characters
+   - **Always emit it as a YAML block scalar** (`commit_message: |`, body indented 2 spaces),
+     even when the message is only a subject line. A single-line `commit_message: <subject>`
+     cannot carry a body or trailers, and a format that changes shape depending on length gives
+     the operator two parse paths — one of which silently truncates. One shape, always.
+   - Structure: subject line, blank line, optional body paragraphs, blank line, optional trailers.
+   - **Trailers are passed in by the orchestrator**, which takes them from the invoking session
+     (for example `Co-Authored-By:` and `Claude-Session:` attribution lines). Reproduce them
+     **verbatim** as the last lines of the block. Never invent them, and never hard-code a model
+     name — if the orchestrator supplied none, emit none.
 4. Derive branch name from the commit type and description: `feat/short-description`, `fix/short-description`, etc.
 5. PR title: identical to the commit message first line
 6. PR body: 2-4 bullet points summarizing what changed and why, plus a brief test plan
@@ -29,7 +38,12 @@ Analyze `git status`, `git diff`, and recent `git log` to produce:
 
 ```
 branch_name: feat/short-description
-commit_message: type(scope): description
+commit_message: |
+  type(scope): description
+
+  Optional body paragraph explaining why the change was made.
+
+  Co-Authored-By: <only if the orchestrator supplied it, verbatim>
 pr_title: type(scope): description
 pr_body: |
   ## Summary

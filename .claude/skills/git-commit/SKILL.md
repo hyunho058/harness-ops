@@ -64,7 +64,12 @@ Agent(
 
     Required output file format:
       branch_name: feat/short-description
-      commit_message: type(scope): description
+      commit_message: |
+        type(scope): description
+
+        Optional body explaining why.
+
+        <any attribution trailers this session requires, verbatim>
       pr_title: type(scope): description
       pr_body: |
         ## Summary
@@ -102,19 +107,47 @@ Agent(
     1. Read _workspace/01_analyst_plan.md
     2. Check current branch (git rev-parse --abbrev-ref HEAD)
        - If 'main': git checkout -b <branch_name>
-       - Otherwise: stay on current branch
+       - Otherwise: stay on current branch and IGNORE the plan's branch_name
     3. git add .
-    4. git commit -m '<commit_message>'
+    4. Commit from a FILE, never with -m. commit_message is a YAML block
+       scalar (commit_message: |) — use the extraction snippet in step 4 of
+       the role definition verbatim: strip the 2-space indent into a temp
+       file, then `git commit -F` that file.
+       Reading commit_message as a single line does NOT yield the subject: it
+       yields the block indicator, the literal pipe character. Committing that
+       gives a commit whose whole message is that one character — subject,
+       body and trailers all gone. -m also exposes backticks, $ and quotes in
+       the message to shell expansion.
+       Then verify `git log -1 --format=%B` contains the body and every
+       trailer line from the plan. If any is missing, amend with -F and the
+       same file, and re-check BEFORE pushing.
     5. git fetch origin && git rebase origin/main
        (commit BEFORE rebase — git rebase refuses a dirty index:
         'error: cannot rebase: Your index contains uncommitted changes')
        (re-read the sha after this — rebasing rewrites the commit)
-    6. git push -u origin <branch_name>
+    6. Push the branch that is actually checked out — re-read it with
+       `git rev-parse --abbrev-ref HEAD` and push THAT, never the plan's
+       branch_name.
+       Step 2 only checks out <branch_name> when starting from main. On any
+       other branch it keeps the current one, while the analyst still proposes
+       a feat/<short-description> name — usually a DIFFERENT one. In
+       `git push origin <name>`, <name> names a LOCAL BRANCH to push; it does
+       not mean 'push HEAD as <name>'. So the plan's name either fails with
+       'error: src refspec <name> does not match any' and pushes nothing, or —
+       if a local branch by that name happens to exist — silently pushes THAT
+       branch instead, leaving the user's commit unpushed. When step 2 did
+       create the branch, HEAD already equals <branch_name>, so re-reading is
+       correct in every case.
+       Report the re-read $BRANCH as branch_pushed.
 
     Write result to _workspace/02_operator_report.md
   "
 )
 ```
+
+> **The plan's `branch_name` is advisory once a feature branch is checked out.** It decides only
+> whether step 2 creates a branch off `main`. From step 6 on, the branch that received the commit
+> is the one to push and the one to report.
 
 After the agent returns, read `_workspace/02_operator_report.md`. If `status` is not `success`, skip Phase 4 and jump to Phase 5 with the error.
 
@@ -148,10 +181,12 @@ Agent(
 
 Read all three workspace files and report to the user:
 
-- **Success**: "Branch `<branch_name>` pushed. Commit: `<sha>`. PR: `<pr_url>`"
+- **Success**: "Branch `<branch_pushed>` pushed. Commit: `<sha>`. PR: `<pr_url>`"
+  (use `branch_pushed` from the operator report — the branch that actually received the commit,
+  not the plan's `branch_name`)
 - **Analyst failed**: "Could not determine what to commit. Details: `_workspace/01_analyst_plan.md`"
 - **Operator failed**: describe the specific error (rebase conflict, push rejected, hook failure)
-- **PR failed**: "Push succeeded but PR creation failed. Branch: `<branch_name>`. Error: `<message>`"
+- **PR failed**: "Push succeeded but PR creation failed. Branch: `<branch_pushed>`. Error: `<message>`"
 
 ## Error Handling
 
@@ -175,10 +210,37 @@ When the user says "retry push", "redo PR", or "fix the commit message":
 ### Happy path
 
 1. User has uncommitted changes on `main`
-2. git-analyst → writes `branch_name: feat/add-logging`, `commit_message: feat(logger): add structured logging`
+2. git-analyst → writes `branch_name: feat/add-logging` and a `commit_message: |` block whose
+   subject is `feat(logger): add structured logging`
 3. git-operator → creates branch, commits, rebases, pushes
 4. git-pr-agent → creates PR, returns URL
 5. Report: "Branch `feat/add-logging` pushed. Commit: `a1b2c3d`. PR: https://github.com/.../pull/42"
+
+### Commit message with a body and trailers
+
+1. git-analyst → writes `commit_message: |` with a subject, a body paragraph, and two attribution
+   trailers, each content line indented 2 spaces
+2. git-operator → extracts the block, strips the indent to a temp file, runs `git commit -F`
+3. Operator verifies `git log -1 --format=%B` contains the body and both trailer lines
+4. Commit carries the full message
+
+**The regression this guards** (verified): reading `commit_message` as a single line yields the
+literal `|`, and `git commit -m '|'` produces a commit whose entire message is one pipe character.
+`-m` also exposes backticks, `$` and quotes in the message to shell expansion.
+
+### Already on a feature branch (the plan's name must not be pushed)
+
+1. User has uncommitted changes on `feat/worktree-dual-runtime-support`, which has an open PR
+2. git-analyst → proposes `branch_name: feat/remove-command-wrappers` (a *different* name)
+3. git-operator → step 2 keeps the current branch, step 6 re-reads `HEAD` and pushes
+   `feat/worktree-dual-runtime-support`
+4. Report: "Branch `feat/worktree-dual-runtime-support` pushed …"
+
+**The regression this guards** (both outcomes verified against a real remote): pushing the plan's
+name instead fails with `error: src refspec feat/remove-command-wrappers does not match any`,
+leaving the commit unpushed and the PR unchanged — and if a local branch by that name happens to
+exist, the push succeeds on the **wrong** branch, publishing unrelated work while the user's commit
+stays local.
 
 ### Error path: rebase conflict
 
