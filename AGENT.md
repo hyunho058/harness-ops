@@ -15,7 +15,7 @@ agents/               # Subagent definitions used internally by skills
   project-automation-auditor.md  # Audits hooks, automations, and workflow integrations
   session-pattern-analyzer.md    # Analyzes execution patterns from session history
   skill-portfolio-analyzer.md    # Evaluates installed skills coverage and gaps
-commands/             # Slash command entry points — one .md per skill
+commands/             # Slash commands for cross-plugin bridges only (harness-factory)
 hooks/                # Lifecycle hooks (hooks.json registration + scripts)
 plugins/
   harness-ops         # Symlink → ../ for marketplace path resolution
@@ -34,7 +34,7 @@ skills/               # Core skill implementations (SKILL.md per skill is the so
 ## Development Guidelines
 
 - **Skills**: The core logic of a skill is defined in `skills/{name}/SKILL.md`. This is the source of truth — edits take effect immediately without reinstalling the plugin.
-- **Commands**: Slash commands live in `commands/` and delegate entirely to the corresponding `skills/` file. Each command file should do nothing except load and invoke its skill.
+- **Commands**: `skills/` are exposed as `/harness-ops:<name>` directly — do NOT add a `commands/*.md` wrapper for a skill in this repo, it only duplicates the entry in the slash menu. `commands/` is reserved for bridges to *other* plugins (harness-factory), which have no local skill to expose.
 - **Agents**: Subagent definitions in `agents/` are consumed by skills (primarily `check-harness`). Each file defines a specialized subagent role.
 - **Hooks**: The hook registry and scripts are managed under `hooks/hooks.json`.
 - **Format**: All prompt outputs and specifications should use `.md` by default (e.g., `spec.md` not `spec.json`).

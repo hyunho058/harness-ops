@@ -171,7 +171,7 @@ After linking, open any Gemini CLI session and type `/harness-ops` to see all 9 
 |---|---|---|
 | **Install** | `claude plugin install harness-ops` | Symlink `.gemini/commands/harness-ops/` |
 | **Invoke** | `/harness-ops:check-harness` | `/harness-ops:check-harness` |
-| **Command definitions** | `commands/*.md` | `.gemini/commands/harness-ops/*.toml` |
+| **Command definitions** | `skills/*/SKILL.md` (exposed directly) | `.gemini/commands/harness-ops/*.toml` |
 | **Skill logic** | `skills/{name}/SKILL.md` | same file (embedded in toml) |
 
 ---
@@ -182,21 +182,10 @@ After linking, open any Gemini CLI session and type `/harness-ops` to see all 9 
 .claude-plugin/
   marketplace.json      # Marketplace manifest (source: ./plugins/harness-ops)
   plugin.json           # Plugin manifest
-commands/               # Slash commands — one .md per skill
-  qa.md
-  check-harness.md
-  scaffold.md
-  specify.md
-  decompose.md
-  coherence-audit.md
-  requirements-interview.md
-  context-audit.md
-  agent-orchestrate.md
-  loop.md
-  build-order.md
-  autopilot.md
-  worktree.md
-  generate-team.md      # Bridge to harness-factory plugin
+commands/               # Bridges to the harness-factory plugin only
+  generate-team.md
+  team-design.md
+  team-build.md
 skills/                 # Skill implementations
   check-harness/SKILL.md
   scaffold/SKILL.md
@@ -228,11 +217,13 @@ plugins/
 
 ## How It Works
 
-Commands in `commands/` delegate to their corresponding `skills/` file:
+Each skill is exposed directly as a namespaced slash command:
 
 ```
-/harness-ops:qa  →  commands/qa.md  →  reads skills/qa/SKILL.md
+/harness-ops:qa  →  skills/qa/SKILL.md
 ```
+
+`commands/` holds only the three bridges to the separate harness-factory plugin, which have no local skill to expose.
 
 `skills/` files are the single source of truth for all skill logic. Edits to the source repo take effect immediately via the `plugins/harness-ops -> ../` symlink — no reinstall needed for local development. For the globally-installed plugin cache, run `claude plugin update harness-ops` to sync changes.
 
