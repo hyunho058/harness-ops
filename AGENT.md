@@ -38,7 +38,8 @@ skills/               # Core skill implementations (SKILL.md per skill is the so
 - **Agents**: Subagent definitions in `agents/` are consumed by skills (primarily `check-harness`). Each file defines a specialized subagent role.
 - **Hooks**: The hook registry and scripts are managed under `hooks/hooks.json`.
 - **Format**: All prompt outputs and specifications should use `.md` by default (e.g., `spec.md` not `spec.json`).
-- **Cross-compatibility**: Skills must be designed to be universally invokable across Claude Code and Gemini CLI. Avoid tool-specific APIs inside `SKILL.md` files.
+- **Cross-compatibility**: Skills must be designed to be universally invokable across Claude Code, Antigravity CLI (`agy`), and Gemini CLI. Avoid tool-specific APIs inside `SKILL.md` files — name a **capability** from `references/runtime-tools.md` instead (`` `capability:run-command` ``, not `Bash`). `scripts/portability-lint.sh` enforces this for every skill listed in `references/converted-skills.md`, and runs as a PreToolUse hook.
+- **Gemini commands**: `.gemini/commands/harness-ops/*.toml` embed a copy of a `SKILL.md`. Never hand-edit the copy — edit the skill and run `scripts/gen-gemini-commands.sh <skill>`. `--check` reports drift. The generator also injects the path anchor that makes `../../references/…` resolvable from a Gemini command, whose cwd is the user's project rather than the skill directory.
 
 ## Installation
 

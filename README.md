@@ -138,7 +138,9 @@ Everything is additive and opt-in: `specify` gains only the `mode: batch` path (
 
 The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads the `harness-ops/` subdirectory name as the namespace prefix, registering skills as `/harness-ops:skill-name`.
 
-> **Note:** the Gemini `.toml` files **embed a copy** of each skill's `SKILL.md`, so they must be regenerated when a skill changes. The newest work is **Claude Code first**: `build-order`, `autopilot`, `decompose`, and `coherence-audit` have no `.toml` yet, and `loop.toml` / `specify.toml` do not yet include the latest additions (resumability / pre-approval / `mode: batch`). Gemini CLI therefore exposes the original 9 skills — regenerate the toml files to bring the new capabilities to Gemini.
+> **Note:** the Gemini `.toml` files **embed a copy** of each skill's `SKILL.md`, so they must be regenerated when a skill changes. Use `scripts/gen-gemini-commands.sh` — it rebuilds the embed from the source `SKILL.md` and injects the **path anchor** a raw copy cannot carry: a skill addresses `../../references/…` relative to its own directory, but a Gemini command is loaded from `~/.gemini/commands/harness-ops/` with the cwd set to *your* project, where that path does not exist. Run `scripts/gen-gemini-commands.sh --check` to list any toml that has drifted from its source.
+>
+> The newest work is **Claude Code first**: `build-order`, `autopilot`, `decompose`, and `coherence-audit` have no `.toml` yet, and the seven tomls that predate the generator (`agent-orchestrate`, `check-harness`, `loop`, `qa`, `requirements-interview`, `scaffold`, `specify`) still carry hand-maintained bodies — `--check` reports them as stale, and `loop` / `specify` in particular do not include the latest additions (resumability / pre-approval / `mode: batch`). Gemini CLI therefore exposes the original 9 skills; regenerate a toml to bring a skill's current body to Gemini.
 
 ### Quick Start
 

@@ -24,13 +24,22 @@ allowed-tools:
 
 # context-audit — Claude memory audit
 
+> **Runtime contract — read this first.** Before executing any step below, read
+> `../../references/runtime-tools.md`. This skill names **capabilities**, not runtime tool
+> names; the map turns each one into the concrete call for the runtime you are in. Every
+> capability this skill uses is `determinism-critical: false`, so it pins no procedure — but the
+> names still differ per runtime, and a skill body that hard-codes one runtime's spelling is
+> unrunnable in the other.
+
 One sentence: **Scan all memory and documents Claude loads in this project, find anything outdated, contradictory, or risky/ambiguous, and surface them in priority order.**
 
 ## 3 Stages
 
 ### 1. Collect what's loaded
 
-Collect all files that Claude Code can actually load or reference in this project context. LLM finds them directly via `Read` / `Glob` / `Grep` — no scripts.
+Collect all files that the agent can actually load or reference in this project context. Find them
+directly with `capability:read-file`, `capability:list-paths` and `capability:search-content` — no
+scripts.
 
 **Starting points**
 - `~/.claude/CLAUDE.md` (if exists)
@@ -112,14 +121,15 @@ Create an auto-fix PR? (Only for Outdated findings with a clear fix)
 
 ## Auto-fix (optional)
 
-Ask via `AskUserQuestion` only after presenting the report summary:
+Ask via `capability:ask-user` only after presenting the report summary:
 
 > "Found HIGH {h} findings. What would you like to do?
 > 1) Create PR with clear fixes only
 > 2) Report only"
 
-If chosen: patch each drifted line with `Edit` (surgical, one finding at a time — not a
-whole-file `Write`), commit per finding on a `docs/drift-fix-<timestamp>` branch, then `gh pr create`.
+If chosen: patch each drifted line with `capability:edit-file` — surgical, one finding at a time,
+never a whole-file rewrite via `capability:write-file`. Then commit per finding on a
+`docs/drift-fix-<timestamp>` branch and open the PR with `gh pr create` (`capability:run-command`).
 
 **Always exclude**: Conflicts (requires human judgment on which side is correct), Risky/Ambiguous (requires intent verification).
 
