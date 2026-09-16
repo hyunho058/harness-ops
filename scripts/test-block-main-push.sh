@@ -3,130 +3,146 @@
 #
 # The hook decides whether a command writes to the protected branch. That is a
 # parsing job with a lot of edge cases (refspecs, --delete, colon-deletes, HEAD,
-# --all/--mirror, flags that swallow their value), and the two over-blocking bugs
-# in the hook's history were both found in production rather than here. This
-# table is the mechanical check that was missing.
+# --all/--mirror, git global options, flags that swallow their value), and the
+# over-blocking bugs in the hook's history were all found in production rather
+# than here. This table is the mechanical check that was missing.
 #
 # Run: scripts/test-block-main-push.sh      (exit 0 = every case behaves)
 #
-# NOTE: run it from a checkout whose HEAD is `main`; the first block asserts the
-# behaviour seen from the protected branch. It creates its own scratch repo for
-# the feature-branch cases.
+# SELF-CONTAINED BY DESIGN. The hook reads the checked-out branch from its own
+# cwd, so an earlier version of this file used the harness-ops checkout as the
+# "HEAD is main" fixture — and then failed 4 cases whenever you ran it from a
+# feature branch, which is most of the time. A test that only passes on one
+# branch gets ignored, so both fixtures are scratch repos built here.
+#
+# HOOK is overridable so an older copy can be run against this same table.
 
 set -u
+
 REPO=$(cd "$(dirname "$0")/.." && pwd -P)
-# HOOK is overridable so an older copy can be run against this same table.
 HOOK="${HOOK:-$REPO/.claude/hooks/block-main-push.sh}"
 pass=0; fail=0
 
-run() {  # run <expect> <cwd> <command>
-  local expect="$1" cwd="$2" cmd="$3" rc
-  local json
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/block-main-push-test.XXXXXX")
+cleanup() { rm -rf "$WORK"; }
+trap cleanup EXIT
+
+# fixture <dir> <branch> — a throwaway repo with <branch> checked out
+fixture() {
+  local dir="$WORK/$1" br="$2"
+  mkdir -p "$dir"
+  (
+    cd "$dir" || exit 1
+    git init -q -b "$br" . 2>/dev/null || { git init -q .; git checkout -q -b "$br"; }
+    git config user.email test@example.invalid
+    git config user.name test
+    echo x > f
+    git add f
+    git commit -qm init
+  )
+  printf '%s' "$dir"
+}
+
+ON_MAIN=$(fixture on-main main)
+ON_FEAT=$(fixture on-feat feat/x)
+
+# sanity: the fixtures really are on the branches the table assumes
+[ "$(git -C "$ON_MAIN" rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "fixture ON_MAIN is not on main"; exit 1; }
+[ "$(git -C "$ON_FEAT" rev-parse --abbrev-ref HEAD)" = "feat/x" ] || { echo "fixture ON_FEAT is not on feat/x"; exit 1; }
+
+# run <expect> <cwd> <command> [PATH override]
+run() {
+  local expect="$1" cwd="$2" cmd="$3" path="${4-KEEP}" rc got json label=""
   json=$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$cmd")
-  ( cd "$cwd" && printf '%s' "$json" | "$HOOK" >/dev/null 2>&1 )
-  rc=$?
-  local got=ALLOW
-  [ "$rc" -eq 2 ] && got=BLOCK
-  if [ "$got" = "$expect" ]; then
-    pass=$((pass+1)); printf '  ok   %-5s %s\n' "$got" "$cmd"
+  if [ "$path" = KEEP ]; then
+    ( cd "$cwd" && printf '%s' "$json" | "$HOOK" >/dev/null 2>&1 )
   else
-    fail=$((fail+1)); printf '  FAIL want=%s got=%s  %s\n' "$expect" "$got" "$cmd"
+    label="(PATH stripped) "
+    ( cd "$cwd" && printf '%s' "$json" | PATH="$path" "$HOOK" >/dev/null 2>&1 )
+  fi
+  rc=$?
+  got=ALLOW; [ "$rc" -eq 2 ] && got=BLOCK
+  if [ "$got" = "$expect" ]; then
+    pass=$((pass+1)); printf '  ok   %-5s %s%s\n' "$got" "$label" "$cmd"
+  else
+    fail=$((fail+1)); printf '  FAIL want=%s got=%s  %s%s\n' "$expect" "$got" "$label" "$cmd"
   fi
 }
 
-# scratch repo checked out on a feature branch
-SCRATCH=${TMPDIR:-/tmp}/block-main-push-test-repo
-rm -rf "$SCRATCH"; mkdir -p "$SCRATCH"
-( cd "$SCRATCH" && git init -q . && git config user.email t@t && git config user.name t \
-  && echo a > a && git add a && git commit -qm init && git checkout -q -b feat/x )
-
-echo "== HEAD is main (cwd = $REPO) =="
-run BLOCK "$REPO" 'git push'
-run BLOCK "$REPO" 'git push origin'
-run BLOCK "$REPO" 'git push origin main'
-run BLOCK "$REPO" 'git push origin HEAD'
-run BLOCK "$REPO" 'git push origin HEAD:main'
-run BLOCK "$REPO" 'git push origin feat/x:main'
-run BLOCK "$REPO" 'git push origin refs/heads/main'
-run BLOCK "$REPO" 'git push origin +main'
-run BLOCK "$REPO" 'git push --force origin main'
-run BLOCK "$REPO" 'git push -f origin main'
-run BLOCK "$REPO" 'git push origin :main'
-run BLOCK "$REPO" 'git push origin --delete main'
-run BLOCK "$REPO" 'git push origin -d main'
-run BLOCK "$REPO" 'git push --all origin'
-run BLOCK "$REPO" 'git push --mirror origin'
-run BLOCK "$REPO" 'git push -u origin main'
+echo "== HEAD is main =="
+run BLOCK "$ON_MAIN" 'git push'
+run BLOCK "$ON_MAIN" 'git push origin'
+run BLOCK "$ON_MAIN" 'git push origin main'
+run BLOCK "$ON_MAIN" 'git push origin HEAD'
+run BLOCK "$ON_MAIN" 'git push origin HEAD:main'
+run BLOCK "$ON_MAIN" 'git push origin feat/x:main'
+run BLOCK "$ON_MAIN" 'git push origin refs/heads/main'
+run BLOCK "$ON_MAIN" 'git push origin +main'
+run BLOCK "$ON_MAIN" 'git push --force origin main'
+run BLOCK "$ON_MAIN" 'git push -f origin main'
+run BLOCK "$ON_MAIN" 'git push origin :main'
+run BLOCK "$ON_MAIN" 'git push origin --delete main'
+run BLOCK "$ON_MAIN" 'git push origin -d main'
+run BLOCK "$ON_MAIN" 'git push --all origin'
+run BLOCK "$ON_MAIN" 'git push --mirror origin'
+run BLOCK "$ON_MAIN" 'git push -u origin main'
 
 echo "== HEAD is main, but the push does NOT target main =="
-run ALLOW "$REPO" 'git push origin --delete feat/some-merged-branch'
-run ALLOW "$REPO" 'git push origin -d feat/x'
-run ALLOW "$REPO" 'git push origin feat/x'
-run ALLOW "$REPO" 'git push -u origin feat/x'
-run ALLOW "$REPO" 'git push origin main:feat/x'
-run ALLOW "$REPO" 'git push origin :feat/x'
-run ALLOW "$REPO" 'git push origin -o ci.skip feat/x'
-run ALLOW "$REPO" 'git push --force-with-lease origin feat/x'
-run ALLOW "$REPO" 'git push origin refs/heads/feat/x'
+run ALLOW "$ON_MAIN" 'git push origin --delete feat/some-merged-branch'
+run ALLOW "$ON_MAIN" 'git push origin -d feat/x'
+run ALLOW "$ON_MAIN" 'git push origin feat/x'
+run ALLOW "$ON_MAIN" 'git push -u origin feat/x'
+run ALLOW "$ON_MAIN" 'git push origin main:feat/x'
+run ALLOW "$ON_MAIN" 'git push origin :feat/x'
+run ALLOW "$ON_MAIN" 'git push origin -o ci.skip feat/x'
+run ALLOW "$ON_MAIN" 'git push --force-with-lease origin feat/x'
+run ALLOW "$ON_MAIN" 'git push origin refs/heads/feat/x'
 
 echo "== the word appears in a FILENAME, not as the subcommand =="
 # Regression: matching "push" anywhere made the guard block reading its own
 # source and its own test file whenever HEAD was main.
-run ALLOW "$REPO" 'git show HEAD:.claude/hooks/block-main-push.sh'
-run ALLOW "$REPO" 'git diff scripts/test-block-main-push.sh'
-run ALLOW "$REPO" 'git log --oneline -- scripts/test-block-main-push.sh'
-run ALLOW "$REPO" 'git add .claude/hooks/block-main-push.sh'
-run ALLOW "$REPO" 'cat .claude/hooks/block-main-push.sh'
-run ALLOW "$REPO" 'git log --grep=push --oneline'
+run ALLOW "$ON_MAIN" 'git show HEAD:.claude/hooks/block-main-push.sh'
+run ALLOW "$ON_MAIN" 'git diff scripts/test-block-main-push.sh'
+run ALLOW "$ON_MAIN" 'git log --oneline -- scripts/test-block-main-push.sh'
+run ALLOW "$ON_MAIN" 'git add .claude/hooks/block-main-push.sh'
+run ALLOW "$ON_MAIN" 'cat .claude/hooks/block-main-push.sh'
+run ALLOW "$ON_MAIN" 'git log --grep=push --oneline'
 
 echo "== git global options before the subcommand =="
-run BLOCK "$REPO" 'git -C /tmp/repo push origin main'
-run ALLOW "$REPO" 'git -C /tmp/repo push origin feat/x'
-run BLOCK "$REPO" 'git -c user.name=x push origin main'
+run BLOCK "$ON_MAIN" 'git -C /tmp/repo push origin main'
+run ALLOW "$ON_MAIN" 'git -C /tmp/repo push origin feat/x'
+run BLOCK "$ON_MAIN" 'git -c user.name=x push origin main'
 
 echo "== not a push at all =="
-run ALLOW "$REPO" 'git status --short'
-run ALLOW "$REPO" 'git log --oneline -5'
-run ALLOW "$REPO" 'ls -la'
-run ALLOW "$REPO" 'git pull --ff-only'
+run ALLOW "$ON_MAIN" 'git status --short'
+run ALLOW "$ON_MAIN" 'git log --oneline -5'
+run ALLOW "$ON_MAIN" 'ls -la'
+run ALLOW "$ON_MAIN" 'git pull --ff-only'
 
 echo "== multi-command lines =="
-run ALLOW "$REPO" 'git add -A && git commit -m wip && git push origin feat/x'
-run BLOCK "$REPO" 'git push origin feat/x && git push origin main'
-run BLOCK "$REPO" 'echo hi; git push origin main'
+run ALLOW "$ON_MAIN" 'git add -A && git commit -m wip && git push origin feat/x'
+run BLOCK "$ON_MAIN" 'git push origin feat/x && git push origin main'
+run BLOCK "$ON_MAIN" 'echo hi; git push origin main'
 
-echo "== HEAD is a feature branch (cwd = scratch repo) =="
-run ALLOW "$SCRATCH" 'git push'
-run ALLOW "$SCRATCH" 'git push origin'
-run ALLOW "$SCRATCH" 'git push origin HEAD'
-run ALLOW "$SCRATCH" 'git push -u origin feat/x'
-run BLOCK "$SCRATCH" 'git push origin main'
-run BLOCK "$SCRATCH" 'git push origin HEAD:main'
-run BLOCK "$SCRATCH" 'git push origin --delete main'
+echo "== HEAD is a feature branch =="
+run ALLOW "$ON_FEAT" 'git push'
+run ALLOW "$ON_FEAT" 'git push origin'
+run ALLOW "$ON_FEAT" 'git push origin HEAD'
+run ALLOW "$ON_FEAT" 'git push -u origin feat/x'
+run BLOCK "$ON_FEAT" 'git push origin main'
+run BLOCK "$ON_FEAT" 'git push origin HEAD:main'
+run BLOCK "$ON_FEAT" 'git push origin --delete main'
 
 echo "== a broken PATH must not make the guard fail OPEN =="
 # Regression: before the hook normalised PATH, a PATH without `grep` made every
 # check silently succeed and every push was allowed, protected branch included.
-EMPTYBIN=${TMPDIR:-/tmp}/block-main-push-empty-bin
-rm -rf "$EMPTYBIN"; mkdir -p "$EMPTYBIN"
-runp() {  # runp <expect> <PATH> <command>
-  local expect="$1" path="$2" cmd="$3" rc got json
-  json=$(python3 -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$cmd")
-  ( cd "$REPO" && printf '%s' "$json" | PATH="$path" "$HOOK" >/dev/null 2>&1 )
-  rc=$?
-  got=ALLOW; [ "$rc" -eq 2 ] && got=BLOCK
-  if [ "$got" = "$expect" ]; then
-    pass=$((pass+1)); printf '  ok   %-5s (PATH stripped) %s\n' "$got" "$cmd"
-  else
-    fail=$((fail+1)); printf '  FAIL want=%s got=%s (PATH stripped) %s\n' "$expect" "$got" "$cmd"
-  fi
-}
-runp BLOCK ""          'git push origin main'
-runp BLOCK "$EMPTYBIN" 'git push origin main'
-runp BLOCK "/nonexistent" 'git push'
-runp ALLOW ""          'git push origin feat/x'
-runp ALLOW "$EMPTYBIN" 'git push origin --delete feat/x'
-rm -rf "$EMPTYBIN"
+EMPTYBIN="$WORK/empty-bin"
+mkdir -p "$EMPTYBIN"
+run BLOCK "$ON_MAIN" 'git push origin main'          ""
+run BLOCK "$ON_MAIN" 'git push origin main'          "$EMPTYBIN"
+run BLOCK "$ON_MAIN" 'git push'                      "/nonexistent"
+run ALLOW "$ON_MAIN" 'git push origin feat/x'        ""
+run ALLOW "$ON_MAIN" 'git push origin --delete feat/x' "$EMPTYBIN"
 
 echo
 echo "pass=$pass fail=$fail"
