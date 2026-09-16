@@ -68,12 +68,11 @@ violation() { printf '  %s\n' "$*" >&2; }
 # map + list loading
 # --------------------------------------------------------------------------
 
-canonical_ids() {
-  [ -f "$MAP" ] || return 0
-  awk '/BEGIN CANONICAL-IDS/{f=1;next} /END CANONICAL-IDS/{f=0} f' "$MAP" \
-    | tr -d '`' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-    | grep -E '^[a-z][a-z0-9-]*$' || true
-}
+# canonical_ids and cited_ids live in scripts/lib/capability-map.sh — the
+# generator classifies the very ids this script validates, and two copies of one
+# parser drift apart. Sourced by absolute path so --hook mode, which runs with
+# the user's cwd, resolves it the same way.
+. "$SCRIPT_DIR/lib/capability-map.sh"
 
 # listed_skills — one skill name per line
 listed_skills() {
@@ -156,7 +155,7 @@ check_imperative() {
 
 check_cited_ids() {
   file="$1"
-  cited=$(grep -oE 'capability:[a-z][a-z0-9-]*' "$file" | sed 's/^capability://' | sort -u || true)
+  cited=$(cited_ids "$file")
   [ -n "$cited" ] || return 0
   known=$(canonical_ids)
   for id in $cited; do

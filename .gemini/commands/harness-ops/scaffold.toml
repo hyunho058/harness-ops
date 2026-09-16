@@ -1,5 +1,35 @@
 description = "Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context"
 prompt = '''
+<!-- GENERATED from skills/scaffold/SKILL.md by scripts/gen-gemini-commands.sh.
+     Do not edit this copy — edit the SKILL.md and regenerate. -->
+
+> **Path anchor — resolve this before step 1.** Everything below this block is a verbatim copy of
+> `skills/scaffold/SKILL.md` from a **harness-ops checkout**. Its relative paths are written
+> against `skills/scaffold/`, which is **not** your working directory: you were loaded from
+> `~/.gemini/commands/harness-ops/` and your cwd is the user's own project. So a literal
+> `../../references/x.md` resolves to `~/references/x.md` and does not exist. **Resolve the
+> checkout root first**, then read every `../../` path relative to it:
+>
+> ```bash
+> for c in "$HOME/.gemini/commands/harness-ops" "./.gemini/commands/harness-ops"; do
+>   r=$(cd -P "$c/../../.." 2>/dev/null && pwd -P) || continue
+>   [ -f "$r/references/runtime-tools.md" ] && [ -d "$r/skills/scaffold" ] && { echo "$r"; break; }
+> done
+> ```
+>
+> This works through the symlink the README prescribes
+> (`ln -s /path/to/harness-ops/.gemini/commands/harness-ops ~/.gemini/commands/harness-ops`), and
+> also when Gemini CLI is run from inside the harness-ops checkout itself. With `<root>` in hand,
+> `../../references/runtime-tools.md` means `<root>/references/runtime-tools.md`, and the same
+> substitution applies to every other `../../` path in the body.
+>
+> **If no candidate validates, do not halt.** Every capability this skill cites is
+> `determinism-critical: false` — a plain file / shell / ask-the-user action whose name differs
+> per runtime but whose outcome does not depend on the map. Say that the map could not be located,
+> then carry on, reading each `` `capability:<id>` `` as your own runtime's equivalent (the shell
+> capability is `run-command`; prompting the user is `ask-user`). Halting here would strand the
+> user over a reference file, not a real precondition.
+
 ---
 name: scaffold
 argument-hint: ""
@@ -381,7 +411,7 @@ CLAUDE.md should stay lean — put stable rules in `docs/` and load conditionall
 @docs/architecture.md # decisions, boundaries
 ```
 
-Rationale: monolithic CLAUDE.md inflates context every turn. `check-harness` axis 2 (C6) checks `conditional_load_evidence >= 1`. Keep the root file under ~80 lines.
+Rationale: monolithic CLAUDE.md inflates context every turn. `check-harness` axis 2 (C6) checks `conditional_load_evidence ≥ 1`. Keep the root file under ~80 lines.
 
 ### 3-4. Skills Detection (auto-suggest + ask)
 
@@ -494,7 +524,7 @@ R2: "Test Infrastructure -- Framework setup with patterns matching the exemplar"
   R2.2: "Test directory structure mirrors source structure"
 
 R3: "Guard Rails -- CLAUDE.md + enforcement mechanisms for drift resistance"
-  R3.1: "CLAUDE.md (lean -- under ~80 lines) with architectural rules, domain context, team conventions, dependency direction, file placement conventions, available project skills summary, and active hooks summary."
+  R3.1: "CLAUDE.md (lean — under ~80 lines) with architectural rules, domain context, team conventions, dependency direction, file placement conventions, available project skills summary, and active hooks summary. Stable long-form content lives in `docs/` and loads via Progressive Disclosure `@docs/*.md` references."
   R3.2: "Linter + formatter configured with project-specific rules"
   R3.3: "CI pipeline running lint + typecheck + test"
   R3.4: ".env.example with all required environment variables documented"
@@ -660,7 +690,7 @@ AskUserQuestion(
 
 ### After Implementation: Establish Harness Baseline
 
-Once TF (verification) passes, suggest running `/check-harness` to establish a maturity baseline for the new project.
+Once TF (verification) passes, suggest running `/check-harness` to establish a maturity baseline for the new project. This closes the scaffold → audit → compound loop.
 
 ```
 AskUserQuestion(

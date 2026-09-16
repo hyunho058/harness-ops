@@ -1,5 +1,35 @@
 description = "Systematically QA test any app — auto-selects browser / computer / CLI mode, produces before/after health score and fix report"
 prompt = '''
+<!-- GENERATED from skills/qa/SKILL.md by scripts/gen-gemini-commands.sh.
+     Do not edit this copy — edit the SKILL.md and regenerate. -->
+
+> **Path anchor — resolve this before step 1.** Everything below this block is a verbatim copy of
+> `skills/qa/SKILL.md` from a **harness-ops checkout**. Its relative paths are written
+> against `skills/qa/`, which is **not** your working directory: you were loaded from
+> `~/.gemini/commands/harness-ops/` and your cwd is the user's own project. So a literal
+> `../../references/x.md` resolves to `~/references/x.md` and does not exist. **Resolve the
+> checkout root first**, then read every `../../` path relative to it:
+>
+> ```bash
+> for c in "$HOME/.gemini/commands/harness-ops" "./.gemini/commands/harness-ops"; do
+>   r=$(cd -P "$c/../../.." 2>/dev/null && pwd -P) || continue
+>   [ -f "$r/references/runtime-tools.md" ] && [ -d "$r/skills/qa" ] && { echo "$r"; break; }
+> done
+> ```
+>
+> This works through the symlink the README prescribes
+> (`ln -s /path/to/harness-ops/.gemini/commands/harness-ops ~/.gemini/commands/harness-ops`), and
+> also when Gemini CLI is run from inside the harness-ops checkout itself. With `<root>` in hand,
+> `../../references/runtime-tools.md` means `<root>/references/runtime-tools.md`, and the same
+> substitution applies to every other `../../` path in the body.
+>
+> **If no candidate validates, do not halt.** Every capability this skill cites is
+> `determinism-critical: false` — a plain file / shell / ask-the-user action whose name differs
+> per runtime but whose outcome does not depend on the map. Say that the map could not be located,
+> then carry on, reading each `` `capability:<id>` `` as your own runtime's equivalent (the shell
+> capability is `run-command`; prompting the user is `ask-user`). Halting here would strand the
+> user over a reference file, not a real precondition.
+
 ---
 name: qa
 argument-hint: ""
@@ -22,6 +52,31 @@ allowed-tools:
   - Grep
   - Agent
   - AskUserQuestion
+  - mcp__computer-use__screenshot
+  - mcp__computer-use__zoom
+  - mcp__computer-use__left_click
+  - mcp__computer-use__right_click
+  - mcp__computer-use__double_click
+  - mcp__computer-use__triple_click
+  - mcp__computer-use__type
+  - mcp__computer-use__key
+  - mcp__computer-use__scroll
+  - mcp__computer-use__mouse_move
+  - mcp__computer-use__left_click_drag
+  - mcp__computer-use__computer_batch
+  - mcp__computer-use__open_application
+  - mcp__computer-use__request_access
+  - mcp__computer-use__list_granted_applications
+  - mcp__computer-use__cursor_position
+  - mcp__computer-use__wait
+  - mcp__computer-use__read_clipboard
+  - mcp__computer-use__write_clipboard
+validate_prompt: |
+  Health score must be computed (0-100 weighted average).
+  Every issue must have at least one screenshot as evidence.
+  Each fix must be a separate atomic commit.
+  Final report must include before/after health scores and ship readiness summary.
+  Mode (browser/computer) must be selected in Phase 0.
 ---
 
 # /qa: Plan -> Test -> Fix -> Verify

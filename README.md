@@ -20,7 +20,7 @@ The art of designing environments where AI agents work well — 13 skills coveri
 | **loop** | Run a task as a supervised verification loop — establishes a 3-gate contract (Pass/Fail · Quantitative · Qualitative), iterates Work→Verify→Fix until gates pass, emits an evidence report, and escalates at autonomy boundaries (schema / migration / auth / payment / spec conflict). **Resumable across compaction**: run-state persists to `progress.md`, so the anti-spin counter and progress survive a compact and a long/unattended run picks up where it left off. **Compounds across runs**: self-learning `## Lessons` (reloaded each run, recorded on failure), maker≠checker Gate 3 (a separate subagent scores the qualitative gate), and an opt-in scheduled heartbeat | `/harness-ops:loop "task"` |
 | **build-order** | Orchestrate **many** feature specs through `loop` as one resumable build — generates a topological `build_order.md` ledger, drives each ready feature via `/loop` (verify-first, so already-built features pass without rework), advances on green and **parks-and-continues** independent features on escalation. The durable ledger survives context compaction. Now calls **`coherence-audit`** at the end of Plan, so a cross-spec **BLOCK** surfaces at the existing batch-approval and can't slip into an unattended run. **Commit-on-green** (opt-out): each green feature is committed individually on a non-`main` run-branch (push optional) — never merges, never touches `main`; the merge stays with the human. | `/harness-ops:build-order [specs glob\|resume]` |
 | **autopilot** | Run a `build-order` **unattended** (overnight) — a safety-governor + scheduler (ScheduleWakeup primary + durable cron backstop) that ticks build-order with **six hard limits** (wall-clock · max-tick · consecutive-park · per-tick-timeout · crash-loop · kill-switch) and halts safely. **Never drives a live session** (no tmux / `/compact` injection); resumable across session death. | `/harness-ops:autopilot [start\|status\|stop]` |
-| **worktree** | Create / list / remove isolated git worktrees so you can run independent parallel Claude Code sessions on separate branches without interference | `/harness-ops:worktree [create\|list\|remove]` |
+| **worktree** | Create / list / **attach** / remove isolated git worktrees so you can run independent parallel sessions on separate branches without interference. **Dual-runtime**: the agent launched *inside* the new worktree is **`agy` (Antigravity CLI) or `claude`**, selected by an optional whole-word last token (`create feat/x agy`), auto-detected from `$ANTIGRAVITY_AGENT` when none is given, and omitted entirely for a plain shell. With tmux it starts a **detached session** with that agent already running and hands back the `tmux attach` command; copies local config only after verifying git actually ignores it. | `/harness-ops:worktree [create <branch> [agy\|claude]\|list\|attach <name>\|remove <path>]` |
 | **generate-team** | Design and build an agent team architecture — delegates to the `harness-factory` plugin (must be installed separately) | `/harness-ops:generate-team [description]` |
 
 ## Subagents
@@ -138,7 +138,9 @@ Everything is additive and opt-in: `specify` gains only the `mode: batch` path (
 
 The repo ships `.gemini/commands/harness-ops/*.toml` files — Gemini CLI reads the `harness-ops/` subdirectory name as the namespace prefix, registering skills as `/harness-ops:skill-name`.
 
-> **Note:** the Gemini `.toml` files **embed a copy** of each skill's `SKILL.md`, so they must be regenerated when a skill changes. The newest work is **Claude Code first**: `build-order`, `autopilot`, `decompose`, and `coherence-audit` have no `.toml` yet, and `loop.toml` / `specify.toml` do not yet include the latest additions (resumability / pre-approval / `mode: batch`). Gemini CLI therefore exposes the original 9 skills — regenerate the toml files to bring the new capabilities to Gemini.
+> **Note:** the Gemini `.toml` files **embed a copy** of each skill's `SKILL.md`, so they must be regenerated when a skill changes. Use `scripts/gen-gemini-commands.sh` — it rebuilds the embed from the source `SKILL.md` and injects the **path anchor** a raw copy cannot carry: a skill addresses `../../references/…` relative to its own directory, but a Gemini command is loaded from `~/.gemini/commands/harness-ops/` with the cwd set to *your* project, where that path does not exist. Run `scripts/gen-gemini-commands.sh --check` to list any toml that has drifted from its source.
+>
+> The newest work is **Claude Code first**: `build-order`, `autopilot`, `decompose`, and `coherence-audit` have no `.toml` yet, and the seven tomls that predate the generator (`agent-orchestrate`, `check-harness`, `loop`, `qa`, `requirements-interview`, `scaffold`, `specify`) still carry hand-maintained bodies — `--check` reports them as stale, and `loop` / `specify` in particular do not include the latest additions (resumability / pre-approval / `mode: batch`). Gemini CLI therefore exposes the original 9 skills; regenerate a toml to bring a skill's current body to Gemini.
 
 ### Quick Start
 
@@ -169,7 +171,7 @@ After linking, open any Gemini CLI session and type `/harness-ops` to see all 9 
 |---|---|---|
 | **Install** | `claude plugin install harness-ops` | Symlink `.gemini/commands/harness-ops/` |
 | **Invoke** | `/harness-ops:check-harness` | `/harness-ops:check-harness` |
-| **Command definitions** | `commands/*.md` | `.gemini/commands/harness-ops/*.toml` |
+| **Command definitions** | `skills/*/SKILL.md` (exposed directly) | `.gemini/commands/harness-ops/*.toml` |
 | **Skill logic** | `skills/{name}/SKILL.md` | same file (embedded in toml) |
 
 ---
@@ -180,21 +182,10 @@ After linking, open any Gemini CLI session and type `/harness-ops` to see all 9 
 .claude-plugin/
   marketplace.json      # Marketplace manifest (source: ./plugins/harness-ops)
   plugin.json           # Plugin manifest
-commands/               # Slash commands — one .md per skill
-  qa.md
-  check-harness.md
-  scaffold.md
-  specify.md
-  decompose.md
-  coherence-audit.md
-  requirements-interview.md
-  context-audit.md
-  agent-orchestrate.md
-  loop.md
-  build-order.md
-  autopilot.md
-  worktree.md
-  generate-team.md      # Bridge to harness-factory plugin
+commands/               # Bridges to the harness-factory plugin only
+  generate-team.md
+  team-design.md
+  team-build.md
 skills/                 # Skill implementations
   check-harness/SKILL.md
   scaffold/SKILL.md
@@ -226,11 +217,13 @@ plugins/
 
 ## How It Works
 
-Commands in `commands/` delegate to their corresponding `skills/` file:
+Each skill is exposed directly as a namespaced slash command:
 
 ```
-/harness-ops:qa  →  commands/qa.md  →  reads skills/qa/SKILL.md
+/harness-ops:qa  →  skills/qa/SKILL.md
 ```
+
+`commands/` holds only the three bridges to the separate harness-factory plugin, which have no local skill to expose.
 
 `skills/` files are the single source of truth for all skill logic. Edits to the source repo take effect immediately via the `plugins/harness-ops -> ../` symlink — no reinstall needed for local development. For the globally-installed plugin cache, run `claude plugin update harness-ops` to sync changes.
 
