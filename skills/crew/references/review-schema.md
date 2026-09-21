@@ -23,6 +23,15 @@ Four sub-contracts:
 specs/<feature>/review-<target>-<iteration>.json
 ```
 
+**The caller writes this file, not the reviewer.** The reviewer emits the JSON object on
+stdout and is granted no write tool at all (`references/experts/cross-functional-reviewer.md`
+› Required tools), which makes flag-only a property of the invocation rather than a promise
+in a prompt. The caller captures stdout — which it is already redirecting to a file for
+evidence (§3) — validates the **reviewer-owned subset** of §2, adds the caller-owned fields, and writes the
+result to the path below. Validating the reviewer's stdout against the whole of §2 would
+reject a correctly-behaving reviewer, because two of those fields describe how the reviewer
+was run — something it cannot observe about itself.
+
 - `<target>` — what was reviewed: `spec`, `design`, …
 - `<iteration>` — 1-based, incrementing per re-review of the same target.
 
@@ -57,6 +66,12 @@ The target must be in the name because two consumers branch on it: the rework ro
 | `reviewer` | role name | Which reviewer produced this. The cross-functional reviewer is a gate component, never a roster role (`roster-schema.md` §1). |
 | `iteration` | integer ≥ 1 | Matches the filename. |
 | `isolation` | `headless` \| `subagent-degraded` | How separated the reviewer was from the orchestrator. See §3. |
+
+**Ownership.** `verdict`, `target`, `reviewer`, `iteration` and `findings` are
+**reviewer-owned** — the reviewer emits exactly these on stdout. `isolation` and `evidence`
+are **caller-owned**: they describe how the reviewer was invoked, which the reviewer cannot
+observe about itself, and letting it assert them would make the evidence rule self-reported
+and therefore worthless (§3). The caller merges the two halves into the stored artifact.
 
 ### Gate semantics
 

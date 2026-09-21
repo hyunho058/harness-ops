@@ -68,16 +68,26 @@ Do not invent them: an expert with an invented bar passes its own review by cons
 
 ## 1. Resolve the seed  (R5.1, R5.2)
 
-Look for `references/experts/<role>.md` relative to this skill.
+Look for `../../references/experts/<role>.md` — the plugin-root `references/`, which is
+this repository's convention for documents shared between skills (see
+`skills/coherence-audit/SKILL.md:32`). Seeds live there rather than under this skill
+because `crew` reads one of them too.
 
-- **Found** → read it. It is the body. Inject the context you were given (stack, UI
-  presence, test command, the feature's `output` path) into its placeholders. Do **not**
-  rewrite its structure or its pass criteria — the seed exists so the same role behaves
-  the same way in an empty project as in a mature one.
+- **Found** → read it. It is the body. Substitute every `{{placeholder}}` the seed declares
+  in its own `SEED CONTRACT` comment — that comment, not this list, is the authoritative set
+  of placeholders for that seed — and
+  **remove the trailing `SEED CONTRACT` comment** — it documents the placeholders for this
+  skill and has no place in an installed agent. A leftover `{{placeholder}}` is a defect:
+  fail rather than install a file that instructs an agent to read `{{brief_path}}`. Do
+  **not** rewrite the seed's structure or its pass criteria — the seed exists so the same
+  role behaves the same way in an empty project as in a mature one.
 - **Not found** → author the body, and it MUST contain the output file and the pass
   criteria (Rule 1).
 
-Seeds are **read-only**. Never write back into `references/experts/`.
+Seeds are **read-only**. Never write back into `../../references/experts/`, and never
+install a seed that is marked as a gate component rather than a roster expert —
+`cross-functional-reviewer.md` says so in its own header and is run by `crew` as a
+headless prompt, not installed here (D43).
 
 ---
 

@@ -783,7 +783,9 @@ harness-ops 플러그인에 스킬 2개(`crew`, `expert`)를 추가하여, 어�
   확정, 나머지 필드는 L3에서 도출)
 - L2 provisional: Data Model — `roster.md` 중 **지문에 들어가지 않는** 나머지 필드
   (지문 대상은 D35에서 확정)
-- L2 provisional: Data Model — 시드 전문가 카탈로그(`references/experts/*.md`) 포맷
+- ~~시드 전문가 카탈로그 포맷~~ — 해소됨(T4). 루트 `references/experts/`에 두 시드를 두고,
+  `{{placeholder}}` 치환 + 말미 `SEED CONTRACT` 주석 제거를 계약으로 고정했다.
+  리뷰어 시드는 프론트매터가 없다 — headless는 툴 집합을 호출에서 받기 때문이다
 - L2 unresolved 없음 — Inversion Probe의 산출물 전달 구멍은 D30/D37, 3차 리뷰가
   드러낸 `specify` 뒷문은 D39, 경로 간 검증 비대칭은 D38에서 닫혔다
 - `specify`(D24)에 회귀 검증이 필요하다 — `specDir` 인자가 없는 기존 호출 경로가
