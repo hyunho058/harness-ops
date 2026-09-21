@@ -37,18 +37,33 @@ Each layer builds on the previous — no skipping, no out-of-order writes.
 
 ## Spec Directory
 
-The spec is written to a project-relative directory:
+`{specDir}` is the directory every layer writes into — the placeholder used throughout
+this skill and its references. It resolves by the **first rule that applies**:
+
+| # | Condition | `{specDir}` |
+|---|-----------|-------------|
+| 1 | `specDir: <path>` passed in the invocation (opt-in, additive) | `<path>` verbatim |
+| 2 | `mode: batch` + `feature-id: <id>` (see `## Batch Mode`) | `specs/<id>/` |
+| 3 | Otherwise — a bare invocation | `specs/{name}/`, `{name}` = kebab-case derived from the goal |
+
+Rule 3 is the pre-existing behaviour and is **unchanged**: a bare `/specify "goal"` with
+no marker derives the name from the goal exactly as before. Rules 1 and 2 are opt-in;
+neither fires unless the caller passes its marker.
 
 ```
-specs/{name}/spec.md
+{specDir}/spec.md
 ```
-
-`{name}` = kebab-case derived from the goal.
 
 Create the directory at Session Init:
 ```bash
-mkdir -p specs/{name}
+mkdir -p {specDir}
 ```
+
+**Why rule 1 exists.** A caller that already owns the feature slug — because it wrote it
+into its own ledger before calling specify — must not have specify re-derive a different
+one from the goal string. Passing `specDir` makes the caller's ledger the single source
+of truth for the path, so the caller's other artifacts land in the same directory as
+`spec.md`. Do not sanitise, re-case, or append to the path given; use it as passed.
 
 ---
 
@@ -67,7 +82,7 @@ Execute layers sequentially. Read each reference file just-in-time.
 ### Session Init (before L0)
 
 ```bash
-mkdir -p specs/{name}
+mkdir -p {specDir}
 ```
 
 Then create spec.md with initial content via Write tool.
@@ -98,6 +113,13 @@ records approval and then hands the approved plan off to execution via
 `Skill(skill="harness-ops:agent-orchestrate")` — see `references/L4-tasks.md`.
 specify never writes task code itself; it produces the plan and delegates the
 *how* to agent-orchestrate, which still confirms the execution pattern with the user.
+
+> **Handoff opt-out (opt-in, additive — see `## Handoff Mode` below):** when specify is
+> invoked with the marker `handoff: none`, the L4 final option is presented as
+> **"Approve"** instead of "Execute" and, on approval, specify records approval and
+> **returns to its caller without invoking `agent-orchestrate`**. Every gate still runs —
+> this removes the *handoff*, not any *gate*. A bare invocation with no marker hands off
+> on Execute exactly as before.
 
 > **Batch-mode bypass (opt-in, additive — see `## Batch Mode` below):** when specify
 > is invoked with the marker `mode: batch` AND the feature's partition-manifest entry
@@ -156,9 +178,42 @@ handoff (the caller — decompose, then build-order — owns execution).
 
 ---
 
+## Handoff Mode — additive, opt-in suppression of the L4 execution handoff
+
+specify gains ONE additive, opt-in marker that changes what happens **after** the final
+approval — never the derivation, never a gate. A bare invocation is byte-unchanged.
+
+**Marker.** `handoff: none` in the invocation args.
+
+**What changes — exactly two things:**
+1. The L4 final-approval option reads **"Approve"** ("Record approval and return to the
+   caller") instead of **"Execute"** ("Start implementation via agent-orchestrate").
+2. On approval, specify writes `Approved by:` / `Approved at:` to the spec's Meta section
+   as usual and then **stops**, returning `{specDir}/spec.md` to its caller. The
+   `Skill(skill="harness-ops:agent-orchestrate")` handoff in
+   `references/L4-tasks.md` › `### Handoff to Execution` is **not** invoked.
+
+**What does NOT change.** Every L0–L4 gate, every self-validation, the L2-reviewer, and
+the written spec are identical. `handoff: none` is **not** an approval bypass — the human
+still confirms the L0 mirror and approves at L2, L3 and L4. It removes the handoff only.
+
+**Why this exists.** A caller that owns the steps *after* the spec — one that runs its own
+review gate and ledger once `spec.md` exists — cannot let L4 launch `agent-orchestrate`,
+because that would stamp approval and start execution before the caller's own gates run,
+and would ask the human to approve twice. Batch mode already suppresses this same handoff
+(`## Batch Mode`; `references/L4-tasks.md` › Final Approval); `handoff: none` makes that
+suppression available to callers that still want the interactive gates.
+
+**Composition with batch mode.** The two markers are independent and do not conflict.
+Batch mode already does not hand off, so `mode: batch` + `handoff: none` is consistent
+(the second marker is redundant there, not contradictory). `handoff: none` alone skips no
+gate; `mode: batch` alone still skips exactly the gates it always did.
+
+---
+
 ## Checklist Before Stopping
 
-- [ ] spec.md at `specs/{name}/spec.md`
+- [ ] spec.md at `{specDir}/spec.md` (resolved per `## Spec Directory`)
 - [ ] `## Goal` section populated
 - [ ] `## Confirmed Goal` section populated
 - [ ] `## Non-goals` section populated (or "(none)")
@@ -169,3 +224,5 @@ handoff (the caller — decompose, then build-order — owns execution).
 - [ ] `## Tasks` section with every task having `Fulfills` linking to requirements
 - [ ] Plan Summary presented to user
 - [ ] `Approved by` and `Approved at` written to Meta section after final approval
+- [ ] Handoff resolved: handed off to agent-orchestrate on Execute, OR returned to the
+      caller with no handoff under `handoff: none` / batch mode
