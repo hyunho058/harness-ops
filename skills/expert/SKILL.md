@@ -24,6 +24,12 @@ allowed-tools:
 
 # /expert — one expert, installed and verified
 
+> **Runtime contract — read this first.** Before executing any step below, read
+> `../../references/runtime-tools.md`. This skill names **capabilities**, not runtime tool
+> names, and cites pinned **procedure ids** (`` `capability:<id>` ``) wherever the outcome
+> depends on running exactly that procedure. The map turns each one into the concrete call for
+> the runtime you are in. Do not substitute your own reasoning for a cited procedure id.
+
 Create ONE expert agent and install it where the target project will actually load it.
 
 This skill exists because writing an agent file is not the same as having an agent. This
@@ -68,7 +74,8 @@ Do not invent them: an expert with an invented bar passes its own review by cons
 
 ## 1. Resolve the seed  (R5.1, R5.2)
 
-Look for `../../references/experts/<role>.md` — the plugin-root `references/`, which is
+Find `../../references/experts/<role>.md` with `capability:read-file` — the plugin-root
+`references/`, which is
 this repository's convention for documents shared between skills (see
 `skills/coherence-audit/SKILL.md:32`). Seeds live there rather than under this skill
 because `crew` reads one of them too.
@@ -137,6 +144,8 @@ generated-at: 2026-09-21T14:02:11+09:00
 ...
 ```
 
+Write it with `capability:write-file`.
+
 `name`, `description` and `tools` are **required**. `generated-by` is the provenance
 marker §6 depends on — omitting it makes the file indistinguishable from one a human
 wrote, and the next run will refuse to touch it.
@@ -154,15 +163,10 @@ Writing is not the end of the task.
 `description` and `tools`. **Failure here is a hard failure**: revert the write and report
 it. This is the check that catches this repository's real failure mode.
 
-**Step ② — query the runtime.**
-
-| Runtime | Query |
-|---------|-------|
-| Claude Code | the session's available-agent list |
-| Antigravity (`agy`) | `manage_subagents` |
+**Step ② — query the runtime** with `capability:list-agents`.
 
 - Name found → record `load_check: verified`.
-- Name not found, or no query is available → record `load_check: file-only` and
+- Name not found, or the query is unavailable → record `load_check: file-only` and
   **continue**.
 
 **`file-only` is not a failure.** Under Claude Code there is no declared agent-list query
@@ -182,7 +186,8 @@ Report the grade. Never report `verified` without having observed the name.
 
 ## 5. Name collision  (R5.5, D9c)
 
-Before writing, check whether `<role>.md` already exists at the install path, and check
+Before writing, use `capability:list-paths` to check whether `<role>.md` already exists at the
+install path, and check
 whether the name collides with an existing skill or agent elsewhere in the project. A
 collision that is not a same-role re-run is a stop, not a rename.
 
@@ -235,7 +240,7 @@ The file lands in the project, is committed, and propagates to the team. Confirm
 
 | Invocation | Confirmation |
 |------------|--------------|
-| Standalone (a human called `/expert`) | **Ask.** Show the install path, the frontmatter, the output file, and the pass criteria. Include directory creation in the same question. |
+| Standalone (a human called `/expert`) | **Ask** via `capability:ask-user`. Show the install path, the frontmatter, the output file, and the pass criteria. Include directory creation in the same question. |
 | Called with `approved_by: <ledger path>` | **Skip** — but first verify that the ledger actually records a human approval covering expert file writes. If it does not, ask. |
 
 The skip exists only because the caller's single approval prompt already absorbed this

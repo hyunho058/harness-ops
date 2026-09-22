@@ -48,6 +48,7 @@ search-web
 track-tasks
 schedule-wakeup
 resolve-harness-root
+list-agents
 run-glob-overlap
 run-entry-digest
 run-portability-tests
@@ -177,6 +178,25 @@ precisely because substituting a paraphrase here changes outcomes.
 |---|---|
 | Claude Code | `Read` → `../../skills/coherence-audit/references/declared-surface-schema.md` |
 | agy | `view_file` → same skill-relative path |
+
+---
+
+## `list-agents` — `determinism-critical: false`
+
+Answers "is this agent name loadable in this runtime right now?" — used after writing an agent
+file, to tell a valid file from a loaded one.
+
+| Runtime | Procedure |
+|---|---|
+| Claude Code | **No query API exists**, and the session's agent list is fixed at start-up, so a file written this turn will not appear in it. Treat the answer as *unavailable*; the first successful spawn of that agent is what confirms it. |
+| agy | `manage_subagents` — read the registry and look for the name. |
+
+**Unavailable is not "absent".** A caller must distinguish "the runtime cannot tell me" from
+"the runtime says no": the first is a limitation and the run continues at a lower grade, the
+second is a real finding. Reporting the first as a failure makes agent installation unusable
+under Claude Code entirely, and under agy whenever the registry comes back empty — which is
+observed. Callers grade the outcome (for example `verified` vs `file-only`) rather than
+branching pass/fail on it.
 
 ---
 
