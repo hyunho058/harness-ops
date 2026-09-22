@@ -212,8 +212,9 @@ distinguishes real delegation from self-authored output.
 
 ## `spawn-inline-checker` — `determinism-critical: true` (**divergent**)
 
-For a checker that has **no `agents/<name>.md` file** — its prompt is written inline at the call
-site (coherence-audit's contradiction judge is the only current case). Separate from
+For a checker that has **no `agents/<name>.md` file** — its prompt is supplied by the call site
+rather than sourced from the harness agent directory (coherence-audit's contradiction judge, and
+crew's review gate, whose reviewer prompt comes from `references/experts/`). Separate from
 `spawn-named-checker` because that procedure's step 1 sources a body from `../../agents/`, which
 is unsatisfiable here; a skill citing the wrong one leaves the runtime to improvise, which is the
 substitution these ids exist to prevent.
@@ -223,9 +224,19 @@ substitution these ids exist to prevent.
 | Claude Code | `Agent(subagent_type="general-purpose")` with the inline prompt |
 | agy | `define_subagent` with a role name, a description stating it is an independent judge, and the inline prompt as its body → then `invoke_subagent` |
 
-Same assertion requirement as `spawn-named-checker` above, minus the artifact clause: there is no
-named report file, so the **registry check is the only evidence** that the judgement came from a
-separate context rather than the caller grading its own work.
+Same assertion requirement as `spawn-named-checker` above, minus the artifact clause when the
+caller has no named report file. Evidence is **per runtime**, matching the registry scoping in that
+entry:
+
+| Runtime | Evidence that the judgement came from a separate context |
+|---|---|
+| Claude Code | The spawn is native; **its own return is the evidence**. There is no registry to query. |
+| agy | The spawn's return, **plus** `manage_subagents` where it is readable. |
+
+Under agy the registry is the stronger signal and should be checked. But it is **not** a pass/fail
+bar on its own: it is observed to come back empty in some agy sessions, and a caller that fails the
+whole check on an empty registry would be unable to run at all on that runtime. Record what the
+registry said and let the caller decide what an absent entry means for its verdict.
 
 ---
 

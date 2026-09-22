@@ -23,14 +23,19 @@ Four sub-contracts:
 specs/<feature>/review-<target>-<iteration>.json
 ```
 
-**The caller writes this file, not the reviewer.** The reviewer emits the JSON object on
-stdout and is granted no write tool at all (`references/experts/cross-functional-reviewer.md`
-› Required tools), which makes flag-only a property of the invocation rather than a promise
-in a prompt. The caller captures stdout — which it is already redirecting to a file for
-evidence (§3) — validates the **reviewer-owned subset** of §2, adds the caller-owned fields, and writes the
-result to the path below. Validating the reviewer's stdout against the whole of §2 would
-reject a correctly-behaving reviewer, because two of those fields describe how the reviewer
-was run — something it cannot observe about itself.
+**The caller writes this file, not the reviewer.** The reviewer returns the JSON object as
+its entire output and is granted no write tool
+(`references/experts/cross-functional-reviewer.md` › Required tools). On the isolated-process
+path that output is stdout, which the caller is already redirecting to a file for evidence
+(§3); on the degraded path it is the spawn's return value. Either way the caller parses that
+output, validates the **reviewer-owned subset** of §2, adds the caller-owned fields, and
+writes the result to the path below. Validating it against the whole of §2 would reject a
+correctly-behaving reviewer, because two of those fields describe how the reviewer was run —
+something it cannot observe about itself.
+
+Flag-only is mechanical only on the isolated-process path, where the tool restriction is part
+of the invocation. On the degraded path the spawned checker holds write tools, so the caller
+verifies after the fact that the target file was not modified (`review-gate.md` §4).
 
 - `<target>` — what was reviewed: `spec`, `design`, …
 - `<iteration>` — 1-based, incrementing per re-review of the same target.
@@ -68,7 +73,7 @@ The target must be in the name because two consumers branch on it: the rework ro
 | `isolation` | `headless` \| `subagent-degraded` | How separated the reviewer was from the orchestrator. See §3. |
 
 **Ownership.** `verdict`, `target`, `reviewer`, `iteration` and `findings` are
-**reviewer-owned** — the reviewer emits exactly these on stdout. `isolation` and `evidence`
+**reviewer-owned** — the reviewer returns exactly these as its output. `isolation` and `evidence`
 are **caller-owned**: they describe how the reviewer was invoked, which the reviewer cannot
 observe about itself, and letting it assert them would make the evidence rule self-reported
 and therefore worthless (§3). The caller merges the two halves into the stored artifact.

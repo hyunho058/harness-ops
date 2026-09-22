@@ -13,10 +13,15 @@
 
 `Read`, `Grep`, `Glob` — **read-only, and that is the point**.
 
-The reviewer is granted **no write tool at all**. It emits its verdict as JSON on stdout
-and the caller captures it. This makes FLAG-ONLY a property of the invocation rather than
-a promise in a prompt: a process with no write tool cannot edit the artifact it is
-reviewing, however it is argued into wanting to.
+The reviewer is granted **no write tool**. It returns its verdict as JSON and the caller
+writes the file. On the isolated-process path this makes FLAG-ONLY a property of the
+invocation rather than a promise in a prompt: a process with no write tool cannot edit the
+artifact it is reviewing, however it is argued into wanting to.
+
+**On the degraded subagent path that restriction cannot be applied** — the spawned checker
+holds write tools, and the `## Boundaries` section below is the only thing standing between
+it and the artifact. The caller compensates by checking the target file for modification
+after the spawn returns. Treat the boundaries as binding, not advisory.
 
 ---
 
@@ -39,8 +44,10 @@ a reader of this file will have the same problem you do.
 
 ## What you produce
 
-Emit **exactly one JSON object on stdout and nothing else**. No preamble, no fences, no
-commentary after it.
+Emit **exactly one JSON object as your entire output, and nothing else** — no preamble, no
+fences, no commentary after it. When you are run as a separate process that means stdout;
+when you are run as a subagent it means your whole response. Either way the caller parses
+your output directly, so anything around the JSON breaks it.
 
 ```json
 {
