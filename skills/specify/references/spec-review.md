@@ -62,10 +62,19 @@ ISSUES:
 ### Fix loop
 
 - **PASS** → record the result and continue to the Plan Summary.
-- **NEEDS_FIX** → specify applies the fixes with Edit. If a fix touched `## Requirements`
-  or `## Tasks`, re-run the L3 Gate and L4 Gate checks. Then spawn a **new** reviewer
-  (a fresh context again, never a continuation of the last one). At most 2 re-reviews,
-  so 3 reviews in total.
+- **NEEDS_FIX** → specify applies the fixes it is allowed to make (below) with Edit.
+  Re-run the gates a fix touched: `## Decisions` → the L2 Gate and the L2-reviewer
+  (the only adversarial check on decisions, and a changed decision can invalidate the
+  requirements derived from the old one); `## Requirements` → the L3 Gate; `## Tasks`
+  → the L4 Gate. **Only if at least one fix was applied**, spawn a **new** reviewer
+  (a fresh context again, never a continuation of the last one). If nothing could be
+  changed — every remaining issue is one specify must not fix — record those issues as
+  Open now and skip to "After the last review"; a re-review of an unchanged file
+  returns the same verdict. At most 2 re-reviews, so 3 reviews in total.
+- Keep the verdict, issue list, and fixes in working notes until the loop ends. Do not
+  write `## Spec Review` into spec.md between rounds: the next reviewer reads the whole
+  file, and a previous verdict with "Fixed" entries would anchor it on re-checking
+  those items instead of judging the spec cold.
 
 **What a fix may change:**
 - **Interactive** — Tasks, `Depends on`, External Dependencies, file paths, and wording.
@@ -82,6 +91,8 @@ ISSUES:
   off. Write the report and notify (Unattended Mode › Stop conditions).
 
 ### Record in spec.md
+
+Written once, after the final verdict (never between rounds — see Fix loop).
 
 ```markdown
 ## Spec Review

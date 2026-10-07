@@ -365,7 +365,10 @@ Gaps and continue. The Spec Review at L4 is the gate that can stop the run.
 
 Read spec.md and verify:
 - At least one decision exists
-- All dimensions have been addressed
+- All dimensions have been addressed. A dimension whose checkpoints are all recorded as
+  `L2 fenced:` in Known Gaps counts as addressed: it was deferred to a person by rule,
+  not skipped. (Unattended runs produce these; a dimension with no decisions and no
+  fenced entries is still a failure.)
 - Constraints section exists (even if empty)
 
 Pass → advance to L3.

@@ -70,11 +70,12 @@ Execute layers sequentially. Read each reference file just-in-time.
 
 ### Session Init (before L0)
 
-```bash
-mkdir -p specs/{name}
-```
-
-Then create spec.md with initial content via Write tool.
+0. **`mode: unattended` only** — run the branch guard from `## Unattended Mode` first.
+   If it fails, stop here: nothing below runs and `specs/{name}` is never created.
+1. ```bash
+   mkdir -p specs/{name}
+   ```
+2. Create spec.md with initial content via Write tool.
 
 ---
 
@@ -190,7 +191,7 @@ claude --bg -w <name> --permission-mode auto "/harness-ops:specify <goal> mode: 
 output); `-w` gives the run its own git worktree and branch; `--permission-mode auto`
 approves routine tool calls, while the auto-mode classifier can still refuse a risky one.
 
-**Branch guard (Session Init, before anything is written).** Run
+**Branch guard (Session Init step 0, before anything is written).** Run
 `git rev-parse --abbrev-ref HEAD` and stop, printing the launch command above, when:
 - the directory is not a git repository;
 - the result is the literal `HEAD` (detached checkout);

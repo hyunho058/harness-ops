@@ -246,11 +246,16 @@ human re-enters via Phase 0, which re-runs VERIFY and re-approves.
    the person's own `mode: unattended` request is the up-front approval and the second
    line follows a passing Spec Review (see `skills/specify/SKILL.md` ›
    `## Unattended Mode`) — derive the contract as in step 1, write it to `loop.md` with
-   the line `pre-approved-unattended: yes`, and skip the AskUserQuestion. If the args
-   name parked work, copy that list into `loop.md` as `## Out of Scope (parked)`: no
-   gate covers it, the Gate-3 checker (which reads `loop.md`) scores nothing in it, and
-   the work loop never implements it. The same things still run as under the
-   pre-approval bypass, and a later re-run matches that bypass directly.
+   the line `pre-approved-unattended-spec: yes`, and skip the AskUserQuestion. If the
+   args name parked work, copy that list into `loop.md` as `## Out of Scope (parked)`:
+   no gate covers it, the Gate-3 checker (which reads `loop.md`) scores nothing in it,
+   and the work loop never implements it. The same things still run as under the
+   pre-approval bypass. The line is deliberately *not* `pre-approved-unattended: yes`:
+   that line means a human approved the contract, and this one does not. On a re-run
+   it grants nothing by itself — the spec's `## Meta` check above runs again, and the
+   existing contract is reused only when it still passes; if the spec changed hands
+   (for example `Approved by: user` after an interactive edit), the Meta check fails
+   and the run falls through to the interactive path below.
    In every other case (interactive, no marker, or neither line): present the
    drafted contract (including any active lessons now folded in) and confirm via
    AskUserQuestion before running the loop. The user owns the bar;
@@ -388,7 +393,8 @@ trip the same way.
      which to keep. Append only the approved ones, tagged `source: human-approved`.
      The human owns `## Lessons` — never auto-write in this mode.
    - **Unattended:** ONLY when the invocation carries an explicit `mode: unattended`
-     marker (set by the `/loop` automation wrapper — see Automation). With no human
+     marker (set by the `/loop` automation wrapper — see Automation — or by
+     agent-orchestrate's Unattended Mode handoff; either source qualifies). With no human
      to approve, append the candidates automatically, tagged `source: auto-unattended`,
      so the lesson still compounds; the tag lets a human review/prune them later.
    - **No marker = no auto-append.** A self-paced re-run in an interactive session

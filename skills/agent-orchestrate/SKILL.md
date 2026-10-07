@@ -313,6 +313,13 @@ wording; leave out Phase 3.5's "implementation is already complete" framing, bec
 here the loop does the building. Without these items, loop's contract approval, lesson
 curation, and escalation would each wait for a person who isn't there.
 
+Phase 3's "park and continue" does not apply inside Pattern D: loop treats fenced work
+as a 🛑 STOP boundary and escalates, which ends the run as `escalated` with the green
+work uncommitted. So before choosing Pattern D, park the tasks Phase 3 step 1 finds
+(those marked `Fenced:` and their dependents) and pass only the rest to loop as the
+scope. A worker that discovers an *unmarked* fence mid-loop still escalates — that is
+the one case this mode cannot recover from, and the report must say which task it was.
+
 **Phase 3 — park fenced work.**
 1. Before executing, collect the tasks that carry a `Fenced:` field, then add every task
    that depends on one of them, directly or transitively. These tasks are **parked** and
@@ -346,15 +353,29 @@ writer of the report; specify writes it only at its own stops, before handing of
    verdict, the branch, and the next step for the person.
 2. **Commit on green only.** The run is green when nothing was parked and the
    verification state is `passed (N iterations)`, or `embedded in Loop pattern` with a
-   Loop Report verdict of all gates passed. Then commit on the current branch: re-run
-   the branch guard, write "Commit: on `{branch}`, see `git log -1`" into the report
-   first so the commit includes it, `git add -A`, write the message to
-   `$(git rev-parse --git-dir)/unattended-commit-msg.txt` (a Conventional Commits subject
-   from the spec's goal, the task list in the body, and the attribution trailers the
-   session provides), and `git commit -F` that file. If the commit fails, replace that
-   line in the report with the error. Never push, never merge, never commit on the
-   default branch. In every other state leave the changes uncommitted so the person
-   reviews the diff.
+   Loop Report verdict of all gates passed. Then commit on the current branch:
+   1. Re-run the branch guard, and write "Commit: on `{branch}`, see `git log -1`"
+      into the report first.
+   2. `git add -A`, then `git add -f {specDir}/unattended-report.md` — `specs/` is
+      gitignored in many repos (it is in this one), so without `-f` the report, the
+      spec, `loop.md`, and `progress.md` are silently left out of the commit. The
+      report is the only one of these forced in; the rest follow the repo's ignore
+      rules.
+   3. Confirm the scope: `git status --short` and compare the staged set with the
+      files the spec's tasks name (plus the report). Unstage anything else — a stray
+      scratch file, a debug script, a worker's temp output — with `git restore --staged`
+      and list it in the report under "Left uncommitted". Nobody is watching this
+      staging, so the check is the only review it gets.
+   4. Write the message to `$(git rev-parse --git-dir)/unattended-commit-msg.txt` (a
+      Conventional Commits subject from the spec's goal, the task list in the body, and
+      the attribution trailers the session provides), and `git commit -F` that file.
+   5. Verify the message: diff `git log -1 --format=%B` against that file with blank
+      lines and trailing whitespace normalised on both sides. A `<` line (text missing
+      from the commit) is a failure; `>` lines alone are a `commit-msg` hook appending
+      and pass.
+   If the commit or the verification fails, replace the "Commit:" line in the report
+   with the error. Never push, never merge, never commit on the default branch. In
+   every other state leave the changes uncommitted so the person reviews the diff.
 3. Send a `PushNotification` with one line: the verification state, done / parked counts,
    the commit sha if there is one, and the report path. If `PushNotification` is
    unavailable, the report file is the record. (A loop escalation also sends loop's own
