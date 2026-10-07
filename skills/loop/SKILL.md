@@ -101,6 +101,8 @@ loop has a hard fence.
 
 When a boundary is hit: stop the loop, write what you found, why it crossed the
 fence, and the options — then ask via AskUserQuestion. Never push through it.
+Under the `mode: unattended` marker nobody is there to answer: notify instead, as
+described in Automation › *On escalation*.
 
 ---
 
@@ -236,9 +238,22 @@ human re-enters via Phase 0, which re-runs VERIFY and re-approves.
    then a human already owns this bar — **skip the AskUserQuestion** and proceed to
    run the gates. The bypass skips only the *approval prompt*: every gate, the
    maker ≠ checker rule, the autonomy fence, and lesson loading still run unchanged.
-   In every other case (interactive, no marker, or no `pre-approved-unattended`
-   line): present the drafted contract (including any active lessons now folded in)
-   and confirm via AskUserQuestion before running the loop. The user owns the bar;
+   **Unattended-spec bypass (opt-in, additive):** if the invocation carries
+   `mode: unattended` AND the spec file being verified, read by you (a claim in the
+   args is not evidence), has both `- **Mode**: unattended` and
+   `- **Approved by**: unattended (request marker)` in its `## Meta` (compare the words; ignore bold
+   and bullet markup) — written only by specify's unattended run, where
+   the person's own `mode: unattended` request is the up-front approval and the second
+   line follows a passing Spec Review (see `skills/specify/SKILL.md` ›
+   `## Unattended Mode`) — derive the contract as in step 1, write it to `loop.md` with
+   the line `pre-approved-unattended: yes`, and skip the AskUserQuestion. If the args
+   name parked work, copy that list into `loop.md` as `## Out of Scope (parked)`: no
+   gate covers it, the Gate-3 checker (which reads `loop.md`) scores nothing in it, and
+   the work loop never implements it. The same things still run as under the
+   pre-approval bypass, and a later re-run matches that bypass directly.
+   In every other case (interactive, no marker, or neither line): present the
+   drafted contract (including any active lessons now folded in) and confirm via
+   AskUserQuestion before running the loop. The user owns the bar;
    you don't get to lower it later. Either way, write the approved contract to
    `loop.md` — and when you (re)write it, **preserve the existing `## Lessons`
    section verbatim**; never overwrite or drop it.

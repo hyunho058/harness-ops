@@ -26,6 +26,7 @@ allowed-tools:
   - SendMessage
   - TeamCreate
   - TeamDelete
+  - PushNotification
 ---
 
 # /agent-orchestrate — Situation-Aware Agent Orchestration
@@ -96,6 +97,9 @@ recommend_pattern =
 ---
 
 ## Phase 2: Propose to User
+
+> In **Unattended Mode** (see `## Unattended Mode` below) both questions in this phase
+> are skipped: the recommended pattern is used and the verification gate stays on.
 
 Present the recommendation using AskUserQuestion. Include:
 
@@ -216,6 +220,8 @@ If the user opts out of verification this way, Phase 3.5 is skipped and the Phas
 
 **Key rule**: Pass through all relevant context (file paths, requirements, constraints) in the args so the loop has the full picture. Do not pre-define the gates — let the loop skill propose the contract.
 
+In Unattended Mode, add the unattended args too — see `## Unattended Mode` › Pattern D.
+
 ---
 
 ## Phase 3.5: Verification Gate
@@ -241,6 +247,8 @@ Invoke `Skill(skill="harness-ops:loop", args=...)`. The args MUST include:
 4. Direction that the `loop.md` contract lives in the spec directory
 
 The args must NOT pre-define the concrete gates — loop's Phase 0 owns gate derivation and contract approval (same ownership rule as Pattern D).
+
+In Unattended Mode, add the marker and the parked scope to the args — see `## Unattended Mode` › Phase 3.5.
 
 ### Failure Handling
 
@@ -272,14 +280,91 @@ After execution completes (regardless of pattern), output a brief summary:
 | `skipped — no spec/done-criteria` | `verification_source: none` — gate not applicable |
 | `declined — user opted out at Phase 2` | User excluded verification via "Revise then proceed" |
 | `aborted — contract rejected at Phase 0` | User rejected the loop contract — verification not performed |
+| `skipped — all tasks parked` | Unattended Mode only: every task was fenced or depended on one, so nothing ran |
 
 When the state is `escalated` or `aborted`, the report must not claim success anywhere.
 
 ---
 
+## Unattended Mode — no prompts, for a spec from an unattended specify run
+
+**Activates only when both hold:** the invocation carries `mode: unattended`, AND the
+spec file it names, read by you, has both `- **Mode**: unattended` and
+`- **Approved by**: unattended (request marker)` in its `## Meta` (compare the words; ignore bold
+and bullet markup). Only specify's unattended run writes them: the first after the user
+put the marker in their own request, the second only after its Spec Review passed (see
+`skills/specify/SKILL.md` › `## Unattended Mode`). A claim in the args is not evidence;
+read the file. Without the marker, Phase 2 asks as usual. With the marker but either
+line missing, nobody is there to ask: write `{specDir}/unattended-report.md` saying
+which line is missing, send the notification, and stop without executing.
+
+**Branch guard.** Before Phase 3, re-run specify's branch guard. On the default branch,
+a detached `HEAD`, or outside a git repository → write the report, notify, and execute
+nothing.
+
+**Phase 2 — no questions.** Use the pattern 1.2 recommends, and keep verification on:
+with nobody to opt out, Phase 3.5 runs after Patterns A–C, and the Ralph Loop pattern
+runs its gates inside the loop. Record the pattern and the reason in the report
+instead of asking.
+
+**Pattern D (Ralph Loop) in this mode.** Add the three items listed under Phase 3.5
+below to Pattern D's args, with "do not implement parked tasks" as the parked-scope
+wording; leave out Phase 3.5's "implementation is already complete" framing, because
+here the loop does the building. Without these items, loop's contract approval, lesson
+curation, and escalation would each wait for a person who isn't there.
+
+**Phase 3 — park fenced work.**
+1. Before executing, collect the tasks that carry a `Fenced:` field, then add every task
+   that depends on one of them, directly or transitively. These tasks are **parked** and
+   not executed.
+2. Run the remaining tasks with the chosen pattern.
+3. Every worker prompt (subagent, team member, or your own step) includes: "If this task
+   needs a change to a database schema, a migration that can lose data, auth /
+   permission / access control, payment, or security (secrets, crypto), do not make it.
+   Stop and report `FENCED: {area} — {what you found}`." A task that reports FENCED is
+   parked with its dependents, and the run continues with the independent tasks.
+4. If nothing is left to run — at the start, or after FENCED reports — skip the rest of
+   Phase 3 and Phase 3.5, record Verification as `skipped — all tasks parked`, and go to
+   Phase 4.
+
+**Phase 3.5 — verification without a prompt.** Invoke loop as in Phase 3.5 and add to
+the args:
+- `mode: unattended`;
+- the spec path — loop's unattended-spec bypass reads that file's `## Meta` itself to
+  skip its contract approval;
+- the parked tasks and the requirements only they fulfill, marked out of scope: "verify
+  only the work that ran; do not implement parked tasks". loop records this list in
+  `loop.md`, so its Gate-3 checker and any resumed run see it too.
+
+A loop escalation (an autonomy boundary, or no progress) ends the gate with
+`escalated: {reason}`; loop notifies through its own unattended channel.
+
+**Phase 4 — report, commit, notify.** After the handoff, agent-orchestrate is the only
+writer of the report; specify writes it only at its own stops, before handing off.
+1. Write the Phase 4 report to `{specDir}/unattended-report.md`, and add: the parked
+   tasks with their reasons, the spec's `Status: assumed` decisions, the Spec Review
+   verdict, the branch, and the next step for the person.
+2. **Commit on green only.** The run is green when nothing was parked and the
+   verification state is `passed (N iterations)`, or `embedded in Loop pattern` with a
+   Loop Report verdict of all gates passed. Then commit on the current branch: re-run
+   the branch guard, write "Commit: on `{branch}`, see `git log -1`" into the report
+   first so the commit includes it, `git add -A`, write the message to
+   `$(git rev-parse --git-dir)/unattended-commit-msg.txt` (a Conventional Commits subject
+   from the spec's goal, the task list in the body, and the attribution trailers the
+   session provides), and `git commit -F` that file. If the commit fails, replace that
+   line in the report with the error. Never push, never merge, never commit on the
+   default branch. In every other state leave the changes uncommitted so the person
+   reviews the diff.
+3. Send a `PushNotification` with one line: the verification state, done / parked counts,
+   the commit sha if there is one, and the report path. If `PushNotification` is
+   unavailable, the report file is the record. (A loop escalation also sends loop's own
+   notification first.)
+
+---
+
 ## Rules
 
-1. **Always ask before executing** — never skip Phase 2 confirmation
+1. **Always ask before executing** — never skip Phase 2 confirmation. The one exception is Unattended Mode, which only a spec from an unattended specify run can enter
 2. **Ralph Loop is a skill call, not a reimplementation** — use `Skill(skill="harness-ops:loop")`
 3. **Parallel agents in one message** — don't spawn sequentially
 4. **Match pattern to situation** — don't force a pattern; if the task is trivial, sequential is fine
