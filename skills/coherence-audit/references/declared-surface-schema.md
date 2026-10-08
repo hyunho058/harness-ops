@@ -328,7 +328,7 @@ contract.
 ## 3. specify `mode: batch` — additive bypass mirroring loop  (D5, R5.1)
 
 `specify` gains ONE additive, opt-in batch path that mirrors loop's
-`pre-approved-unattended` precedent (`skills/loop/SKILL.md:231-239, 438`). Faithfully
+`pre-approved-unattended` precedent (`skills/loop/SKILL.md:233-240, 453`). Faithfully
 mirroring loop's **marker-AND-line** rule, the bypass fires only when BOTH are present:
 
 - **Invocation marker (exact string):** `mode: batch`
@@ -355,9 +355,9 @@ still covers them, which is what keeps a resume cheap. An **Abort** at the scope
 leaves a changed entry at `pre-approved-batch: no` while keeping `state: generated`, so the
 existing spec body is still there to preserve on the next attempt.
 
-Bypass condition (mirrors loop:233-236): specify skips its interactive prompts **iff** the
+Bypass condition (mirrors loop:235-238): specify skips its interactive prompts **iff** the
 invocation carries `mode: batch` **AND** the feature's manifest entry carries
-`pre-approved-batch: yes`. A bare `/specify "goal"` (no marker) is **byte-unchanged** (R5.3).
+`pre-approved-batch: yes`. A bare `/specify "goal"` (no marker) is **unaffected by the batch path** (R5.3).
 
 ### What it SKIPS vs does NOT skip (R5.1, R5.2 — mirrors loop's "approval prompt only")
 

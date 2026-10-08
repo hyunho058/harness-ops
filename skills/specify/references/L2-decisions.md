@@ -41,7 +41,7 @@ Complexity: Medium (3 signals)
 
 **Brownfield adjustment**: When L1 detects existing codebase, Implementation checkpoints auto-resolve from existing patterns. Redistribute weight: Core 30%, Scope 20%, Error 25%, Data 15%, Implementation 10%.
 
-**L1 Auto-Resolve**: Before generating questions, check each checkpoint against L1 research. If L1 already answers it → mark resolved, record as decision with `assumed: true`. These count toward the score.
+**L1 Auto-Resolve**: Before generating questions, check each checkpoint against L1 research. If L1 already answers it → mark resolved, record as decision with `assumed: true`. These count toward the score. (In unattended runs, fenced checkpoints are never auto-resolved — see the Unattended bypass at L2 Approval.)
 
 Output the checkpoint table (visible to user):
 
@@ -331,11 +331,44 @@ with the derived decisions; a NEEDS_FIX is still addressed and re-reviewed exact
 above. (`coherence-audit` is a cross-spec checker and does NOT replace this within-spec
 review.) A bare invocation with no marker is unchanged.
 
+**Unattended bypass (additive, opt-in — see specify `SKILL.md` › `## Unattended Mode`):**
+if the user's invocation carries `mode: unattended`, run the interview without asking
+anyone. Each round still scores, targets, writes decisions, and runs Unknown/Unknown
+detection; only step 3 (**Ask**) changes. Answer each scenario question from the first
+source that settles it:
+
+1. **The request** says it → `resolved`.
+2. **L1 research** settles it (existing pattern, config, convention) → `resolved`,
+   `assumed: true` — the existing L1 Auto-Resolve rule.
+3. **Neither** → treat it as the user choosing "Agent decides": pick the option a
+   senior engineer on this codebase would pick, record `Status: assumed`, and name the
+   rejected alternatives in the rationale. It counts as resolved for scoring.
+
+**Fenced checkpoints are the exception.** A checkpoint about a database schema, a
+migration that can lose data, auth / permission / access control, payment, or security
+(secrets, crypto) can be settled only by rule 1, the person's own request. Step 0's
+L1 Auto-Resolve and rules 2–3 skip it. Unless the request settles it:
+- leave it unresolved and add `L2 fenced: {area} — {checkpoint}` to Known Gaps;
+- the Unresolved Checkpoint Sweep keeps that `L2 fenced:` entry and does not add a
+  second `L2 unresolved:` one;
+- exclude it from the composite and per-dimension scores, since it is deferred to a
+  person by design. A dimension whose checkpoints are all fenced is left out of the
+  per-dimension floor rather than scored 0/0.
+
+High-impact follow-ups and the Inversion Probe are answered the same way. At the round-10
+circuit breaker, proceed: there is nobody to type "proceed". The L2-reviewer still
+runs; PASS advances to L3 without the `AskUserQuestion`. NEEDS_FIX is addressed and
+re-reviewed as above; if it is still NEEDS_FIX after 2 retries, add its issues to Known
+Gaps and continue. The Spec Review at L4 is the gate that can stop the run.
+
 ### L2 Gate
 
 Read spec.md and verify:
 - At least one decision exists
-- All dimensions have been addressed
+- All dimensions have been addressed. A dimension whose checkpoints are all recorded as
+  `L2 fenced:` in Known Gaps counts as addressed: it was deferred to a person by rule,
+  not skipped. (Unattended runs produce these; a dimension with no decisions and no
+  fenced entries is still a failure.)
 - Constraints section exists (even if empty)
 
 Pass → advance to L3.
