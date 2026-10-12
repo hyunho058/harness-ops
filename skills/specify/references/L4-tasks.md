@@ -73,6 +73,11 @@ A task may be BE-only or FE-only when:
 
 In the third case, the task must have `Depends on` pointing to the task that built the API.
 
+**Unattended runs only:** the per-requirement acceptance-test task (`TTn`, see the task
+rules below) is a further permitted horizontal split, on the same footing as shared
+infrastructure: it has no UI counterpart, and the tests for a requirement must not share
+an author with the implementation they check.
+
 ### Write to spec.md
 
 Append the Tasks section to spec.md:
@@ -108,6 +113,20 @@ Append the Tasks section to spec.md:
   or that needs an `L2 fenced:` gap gets `- **Fenced**: {area} — {why}`. Keep fenced work
   in its own task rather than folding it into a larger one, so agent-orchestrate can park
   only that task and its dependents (see specify `SKILL.md` › `## Unattended Mode`).
+- **Unattended runs only:** for every requirement `R1` and above, L4 also emits an
+  acceptance-test task `TTn: acceptance tests for Rn's GWTs` with `Fulfills: Rn (tests)`.
+  Its `Depends on` lists only the `[infra]` tasks that Rn's implementation tasks depend
+  on, directly or transitively — no other infra, and never an implementation task, so
+  TTs have no edges between each other and run in parallel. Each implementation task
+  that fulfills Rn gets `Depends on: TTn` (one per Rn it fulfills). With the template
+  above: `TT1`–`TT4` all depend on `T1` (the only `[infra]` task; `T4` reaches it through
+  `T2` and `T3`), `T2` becomes `Depends on: T1, TT1`, `T3` becomes `Depends on: T1, TT2`,
+  and `T4` becomes `Depends on: T2, T3, TT3, TT4`. A TT creates NEW test files only, with
+  basenames prefixed `tt{n}_`; it never adds cases to an existing test file. `R0` is
+  goal-level and gets no TT — its GWTs are judged by reading code — so a task that
+  fulfills only `R0` has no TT dependency. The `Depends on: TTn` edge is ordering-only:
+  it means "run after TTn", and a TT's own park or failure does not by itself park the
+  tasks that depend on it (agent-orchestrate owns that rule).
 
 ### External Dependencies
 
@@ -264,7 +283,10 @@ running" in the args above with the marker and its instructions:
         mode: unattended — this spec came from an unattended specify run. Follow
         your Unattended Mode section: no prompts,
         park every task marked Fenced and the tasks that depend on it, and write
-        {specDir}/unattended-report.md when you finish. After execution completes, ...
+        {specDir}/unattended-report.md when you finish. After execution, run your
+        requirement check against the spec's sub-requirement GWTs and
+        `gwt-tests.md`, re-dispatching unmet tasks for up to 2 rounds, before the
+        verification gate. After execution completes, ...
 ```
 
 agent-orchestrate reads the spec's `## Meta` itself and accepts the marker only when

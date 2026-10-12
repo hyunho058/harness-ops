@@ -250,8 +250,8 @@ list (`skills/loop/SKILL.md` › Autonomy Boundary), applied from the spec onwar
 | L0 | Mirror → user confirms | Mirror written as Confirmed Goal without asking; Meta gets `- **Mode**: unattended` |
 | L1 | Auto | Unchanged |
 | L2 | Interview → L2-reviewer → user approves | specify answers each question from the request, then the codebase, then its own best choice (`Status: assumed`); fenced checkpoints stay open; L2-reviewer still runs |
-| L3 | User approves | Self-checks only |
-| L4 | Spec Review → user approves Execute | Fenced tasks marked; Spec Review is the gate; on PASS add `- **Approved by**: unattended (request marker)` and hand off with `mode: unattended` |
+| L3 | User approves | Self-checks only; a sub-requirement that describes code behavior names its boundary in When (route, CLI command, public function or module, event) or carries `(manual)` at the end of its heading, and each requirement heading ends with its decision ids |
+| L4 | Spec Review → user approves Execute | Fenced tasks marked; one acceptance-test task `TTn` per requirement `R1` and above (`Fulfills: Rn (tests)`) that Rn's implementation tasks depend on; Spec Review is the gate; on PASS add `- **Approved by**: unattended (request marker)` and hand off with `mode: unattended` |
 
 **Marker chain.** agent-orchestrate and loop act unattended only when their invocation
 carries the marker AND the spec file, which they read themselves, has both
