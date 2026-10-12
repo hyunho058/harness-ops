@@ -122,7 +122,9 @@ Append the Tasks section to spec.md:
   above: `TT1`–`TT4` all depend on `T1` (the only `[infra]` task; `T4` reaches it through
   `T2` and `T3`), `T2` becomes `Depends on: T1, TT1`, `T3` becomes `Depends on: T1, TT2`,
   and `T4` becomes `Depends on: T2, T3, TT3, TT4`. A TT creates NEW test files only, with
-  basenames prefixed `tt{n}_`; it never adds cases to an existing test file. `R0` is
+  basenames prefixed `tt{n}_` that also match the project test runner's collection pattern
+  (`tt{n}_x_test.py`, `tt{n}_x.test.ts`), so the project's one test command runs them; it
+  never adds cases to an existing test file. `R0` is
   goal-level and gets no TT — its GWTs are judged by reading code — so a task that
   fulfills only `R0` has no TT dependency. The `Depends on: TTn` edge is ordering-only:
   it means "run after TTn", and a TT's own park or failure does not by itself park the
