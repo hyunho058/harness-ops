@@ -23,12 +23,10 @@ prompt = '''
 > `../../references/runtime-tools.md` means `<root>/references/runtime-tools.md`, and the same
 > substitution applies to every other `../../` path in the body.
 >
-> **If no candidate validates, do not halt.** Every capability this skill cites is
-> `determinism-critical: false` — a plain file / shell / ask-the-user action whose name differs
-> per runtime but whose outcome does not depend on the map. Say that the map could not be located,
-> then carry on, reading each `` `capability:<id>` `` as your own runtime's equivalent (the shell
-> capability is `run-command`; prompting the user is `ask-user`). Halting here would strand the
-> user over a reference file, not a real precondition.
+> **If no candidate validates, halt** — say `unresolved: harness root did not validate`. This
+> skill cites pinned, determinism-critical procedures (spawn-inline-checker),
+> and the map is the only place they are defined. Guessing at one is the substitution the
+> procedure ids exist to prevent.
 
 ---
 name: agent-orchestrate
@@ -315,7 +313,7 @@ After execution completes (regardless of pattern), output a brief summary:
 | `aborted — contract rejected at Phase 0` | User rejected the loop contract — verification not performed |
 | `skipped — all tasks parked` | Unattended Mode only: every task was fenced or depended on one, so nothing ran |
 | `requirements unmet after N rounds` | Unattended Mode only: Phase 3.4 stopped with in-scope GWTs still unmet after N re-dispatch rounds — N may be 0 (nothing left to target) — and the gate did not run |
-| `requirements check failed — {reason}` | Unattended Mode only: the Phase 3.4 checker could not produce a valid verdict (an error, a timeout, or an invalid line twice over — or `no Agent tool`), so no GWT was judged and the gate did not run; or a test file `gwt-tests.md` lists changed after the check (`TT file modified after the check: {files}`), so the verdict no longer describes the tree and nothing was committed |
+| `requirements check failed — {reason}` | Unattended Mode only: the Phase 3.4 checker could not produce a valid verdict (an error, a timeout, or an invalid line twice over — or `no subagent capability`), so no GWT was judged and the gate did not run; or a test file `gwt-tests.md` lists changed after the check (`TT file modified after the check: {files}`), so the verdict no longer describes the tree and nothing was committed |
 
 When the state is `escalated`, `aborted`, `requirements unmet after N rounds`, or `requirements check failed — {reason}`, the report must not claim success anywhere. The checkable proxy for that: the report has no `Commit:` line, its Verification is one of those states, and its Result line contains neither `passed` nor `green`.
 
@@ -347,15 +345,18 @@ cited below (§1–§5) are that file's.
 a detached `HEAD`, or outside a git repository → write the report, notify, and execute
 nothing.
 
-**`Agent` check.** Right after the branch guard, and before Phase 3 runs anything — for a
-spec with no TT tasks too — confirm the `Agent` tool is available. Without it neither a
-TT nor the Phase 3.4 checker can be spawned, so nothing in the run can be verified: write
-the report with Verification `requirements check failed — no Agent tool`, notify, and
-stop before Phase 3 — the same stop specify's Spec Review makes with no subagent tool.
-This pre-check is additional; Phase 3.4 checks again at check time and stops with the
-same state as the fallback for the same condition (the tool can go away after the TT
-step). It lives here and not in the TT subsection because that subsection is skipped
-whole for a spec without TTs, and the stop has to come before any task has run.
+**Subagent check.** Right after the branch guard, and before Phase 3 runs anything — for
+a spec with no TT tasks too — confirm the runtime's subagent capability is available:
+`capability:spawn-inline-checker` in `../../references/runtime-tools.md`, which is the
+`Agent` tool in Claude Code and `define_subagent` + `invoke_subagent` under agy. Without
+it neither a TT nor the Phase 3.4 checker can be spawned, so nothing in the run can be
+verified: write the report with Verification `requirements check failed — no subagent
+capability`, notify, and stop before Phase 3 — the same stop specify's Spec Review makes
+with no subagent tool. This pre-check is additional; Phase 3.4 checks again at check
+time and stops with the same state as the fallback for the same condition (the
+capability can go away after the TT step). It lives here and not in the TT subsection
+because that subsection is skipped whole for a spec without TTs, and the stop has to
+come before any task has run.
 
 **Phase 2 — no questions.** Use the pattern 1.2 recommends, and keep verification on:
 with nobody to opt out, Phase 3.5 runs after Patterns A–C, and the Ralph Loop pattern
@@ -423,7 +424,13 @@ today. Re-dispatch is not a recovery path for an escalation.
      leave the check scope. You are the orchestrator, not an implementation worker, so
      the "never modify a listed test file" rule does not bind you here.
 2. Run the remaining tasks with the chosen pattern — TT tasks first, as the next
-   subsection lays out.
+   subsection lays out. Before the first of them runs, create
+   `{specDir}/requirement-check.md` with its `spec: sha256 {hash}` line (§2), and in
+   Patterns A–C append `task {id} done` the moment each implementation task returns:
+   `gwt-tests.md` is the TT record, these lines are the implementation record, and a
+   resume re-runs only the tasks without one. Without them a compaction mid-Phase 3
+   leaves you guessing between redoing finished work and skipping unfinished work.
+   Pattern D writes none; loop's `progress.md` is its record.
 3. Every worker prompt (subagent, team member, or your own step) includes: "If this task
    needs a change to a database schema, a migration that can lose data, auth /
    permission / access control, payment, or security (secrets, crypto), do not make it.
@@ -442,7 +449,8 @@ today. Re-dispatch is not a recovery path for an escalation.
    and go to Phase 4.
 
 **Phase 3 — run TT tasks first.**
-1. **TTs are always separate `Agent` workers**, whatever the pattern — Sequential
+1. **TTs are always separate subagent workers** (`capability:spawn-inline-checker`),
+   whatever the pattern — Sequential
    included: there you implement the tasks yourself, and if you also wrote the tests the
    maker and the checker would be one context. Never write a TT's tests yourself. Run
    them in DAG order: after the `[infra]` tasks they depend on (those run with the chosen
@@ -470,7 +478,13 @@ today. Re-dispatch is not a recovery path for an escalation.
    before and after each TT: remove only the **new** entries whose basename starts with
    `tt{n}_`. The prefix keeps a parallel sibling's files safe — never remove another TT's
    files from the same batch — and `-uall` keeps a new test directory from collapsing
-   into one `?? tests/` line that no basename would match.
+   into one `?? tests/` line that no basename would match. Compare the whole snapshots
+   too, for every TT, succeeded or not — a returned file list is a claim: a tracked file
+   that was clean before and shows ` M` after is a rule break, since a TT never edits an
+   existing file. If no other worker ran between the two snapshots, restore it with
+   `git checkout -- {file}`; if a parallel batch was running the change cannot be
+   attributed, so leave it and list the file in the report under `possibly modified by
+   TT{n}` — Phase 4.2's scope check sees it again before anything is committed.
 5. **On resume**, re-run only the TTs that have no `gwt-tests.md` block. Before re-running
    one there is no "before" snapshot — compaction took it — so first remove every
    untracked (`??`) entry of `git status --porcelain -uall` whose basename starts with
@@ -484,26 +498,37 @@ judge again — the formats and prompts are §2, §4, and §5.
    interactive path has no such phase. If park step 4 fired — nothing left to run,
    Verification `skipped — all tasks parked` — skip this phase too; the "zero unmet"
    exit below presumes at least one in-scope GWT. The moment Phase 3 execution ends
-   (Patterns A–C finished; in Pattern D, loop returned without escalating), write the
-   `spec: sha256 {hash}` and `phase3 complete` lines first: they create
-   `{specDir}/requirement-check.md` (§2).
-2. **The check.** Spawn the checker as a fresh-context `Agent` with the §4 prompt and
-   only the inputs it lists: the spec path; `gwt-tests.md`, or the line "no mapping —
-   judge every GWT as read" when the spec has no TT tasks; the changed-file list — every
-   path in `git status --porcelain -uall`, tracked modifications and untracked files
-   alike, since nothing in this run is committed before Phase 4; never the workers'
-   reports, which are claims, and a worker that omits a file it created would hide it
-   from the check; the out-of-scope GWTs — those whose requirements only parked tasks
-   fulfill, the same list Phase 3.5 receives; and the §4 prompt itself, whose numbered
-   procedure is the checklist. Never the workers' reasoning or your own transcript. The checker runs the recorded test commands itself and fixes nothing. If
-   `Agent` is unavailable here (the `Agent` check after the branch guard normally
-   catches this earlier; this is its fallback), stop before the check: write the report with Verification
-   `requirements check failed — no Agent tool`, notify, run no Phase 3.5, commit
-   nothing. Validate the returned lines against the two §4 shapes and nothing else: a
-   line of any other shape, or no line for an in-scope GWT, is a checker failure, as
-   are an error and a timeout. Retry once with a new fresh-context checker; a second
-   failure ends the run with `requirements check failed — {reason}` and no re-dispatch
-   — a missing line is not an unmet verdict, and rebuilding on it would be groundless.
+   (Patterns A–C finished; in Pattern D, loop returned without escalating), append the
+   `phase3 complete` line to `{specDir}/requirement-check.md` first (§2; the file has
+   existed since Phase 3 began).
+2. **The check.** Spawn the checker as a fresh-context subagent
+   (`capability:spawn-inline-checker`) with the §4 prompt and only the inputs it lists:
+   the spec path; `gwt-tests.md`, or the line "no mapping — judge every GWT as read"
+   when the spec has no TT tasks; the changed-file list — every path in `git status
+   --porcelain -uall`, tracked modifications and untracked files alike, since nothing in
+   this run is committed before Phase 4; never the workers' reports, which are claims,
+   and a worker that omits a file it created would hide it from the check; the
+   out-of-scope GWTs — those whose requirements only parked tasks fulfill, the same list
+   Phase 3.5 receives; and the §4 prompt itself, whose numbered procedure is the
+   checklist. Never the workers' reasoning or your own transcript. The checker runs the
+   recorded test commands itself and fixes nothing. If the subagent capability is
+   unavailable here (the subagent check after the branch guard normally catches this
+   earlier; this is its fallback), stop before the check: write the report with
+   Verification `requirements check failed — no subagent capability`, notify, run no
+   Phase 3.5, commit nothing. Validate the returned lines against what you already
+   know, not against shape alone. First drop every line that matches neither §4 shape —
+   a preamble, a blank, a closing remark — and read the separators loosely: `—`, `–`,
+   `-`, `--`, any spacing. Then, over the lines that do match: exactly one line per
+   in-scope GWT, or the check fails — a missing line and a duplicate alike; an
+   `out-of-scope` line for an in-scope GWT is a checker failure, not an exclusion — the
+   out-of-scope set is yours and the checker cannot grow it; grounds `test` on a GWT
+   whose mapping is `manual:` or absent, or grounds `read` on a GWT whose mapping is
+   `test:`, is a checker failure — the procedure was not followed, and a verdict on the
+   wrong evidence is no verdict; a line for a GWT you listed out of scope is ignored
+   whatever it says. An error and a timeout are failures too. Retry once with a new
+   fresh-context checker; a second failure ends the run with `requirements check failed
+   — {reason}` and no re-dispatch — a missing line is not an unmet verdict, and
+   rebuilding on it would be groundless.
 3. **Re-dispatch round.** Targets are the implementation tasks (identification key)
    whose `Fulfills` includes the requirement of an unmet GWT, minus the parked ones: if
    Rn is fulfilled by two tasks and one is parked, only the other is a target, and an
@@ -519,9 +544,10 @@ judge again — the formats and prompts are §2, §4, and §5.
    TTn (§3, with the checker's lines appended), replace its block with freshly measured
    hashes, and only then re-dispatch Rn's implementation tasks, so they build against
    the rewritten tests. Implementation workers get the §5 prompt with the unmet GWTs
-   (BLOCKED ones omitted) and the checker's lines for them. Every re-dispatch worker is a new `Agent` worker
-   whatever the pattern — same role, new instance; after Pattern D too, never a second
-   loop call. Several targets follow the original DAG: dependent tasks in order,
+   (BLOCKED ones omitted) and the checker's lines for them. Every re-dispatch worker
+   is a new subagent worker (`capability:spawn-inline-checker`) whatever the pattern —
+   same role, new instance; after Pattern D too, never a second loop call. Several
+   targets follow the original DAG: dependent tasks in order,
    independent ones (no `Depends on`, no file overlap) spawned in parallel in one
    message. A worker that reports FENCED mid-round parks its task and dependents (park
    step 1); if that leaves Rn with no unparked implementation task and TTn already ran,
@@ -556,8 +582,10 @@ judge again — the formats and prompts are §2, §4, and §5.
    from the beginning instead of resuming a run that never happened on this spec. With
    a match, read the ledger first:
    - no file, or no `phase3 complete` line → Phase 3 is still running: resume it as
-     before (TTs without a block, then the remaining tasks) and run no check — judging
-     tasks that never ran as unmet would spend the two rounds on the first build;
+     before (TTs without a `gwt-tests.md` block, then the implementation tasks without
+     a `task {id} done` line; after Pattern D, re-invoke loop, which resumes from its
+     own `progress.md`) and run no check — judging tasks that never ran as unmet would
+     spend the two rounds on the first build;
    - `phase3 complete` and nothing after it → round 0: run the full check;
    - the last entry is a `round N dispatched` line with no `## round N` table after it
      → run the full check and count its result as the end of round N, whether or not

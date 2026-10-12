@@ -16,7 +16,11 @@ before re-running a TT that has no `gwt-tests.md` block, every untracked (`??`) 
 basename starts with `tt{n}_` is treated as that TT's and removed. The prefix keeps a parallel
 sibling's files safe; `-uall` keeps a new test directory from collapsing into one `?? tests/`
 line that would never match a basename. Before a TTn re-dispatch, remove the files listed in
-its block instead — the block is the record for a TT that finished.
+its block instead — the block is the record for a TT that finished. The snapshots are also
+compared whole, for every TT: a tracked file that went from clean to ` M` while the TT ran is a
+rule break (a TT never edits an existing file) — restored with `git checkout --` when the TT ran
+alone, listed in the report as `possibly modified by TT{n}` when a parallel batch makes the
+change unattributable.
 
 ## 1. `gwt-tests.md` — GWT to test mapping
 
@@ -65,24 +69,31 @@ at the same time and those GWTs leave the check scope).
 
 ## 2. `requirement-check.md` — round ledger
 
-Path: `{specDir}/requirement-check.md`. Three kinds of entry, all written by the orchestrator,
+Path: `{specDir}/requirement-check.md`. Five kinds of entry, all written by the orchestrator,
 each by **atomic write**: write the whole new content to `{specDir}/requirement-check.md.tmp`,
 then rename over the target. The file is the resume state for the check loop (the counterpart
 of loop's `progress.md`); `specs/` is gitignored, so it is never committed.
 
-1. `spec: sha256 {hash of spec.md}` and `phase3 complete` — the first two lines, written
-   together the moment Phase 3 execution ends; this is what creates the file. The hash is the
-   run identity (below).
-2. `round N dispatched: {tasks}` — written **just before** the round's workers are spawned,
+1. `spec: sha256 {hash of spec.md}` — the first line, written when Phase 3 starts executing
+   (after the park step); this is what creates the file. The hash is the run identity (below).
+2. `task {id} done` — one line per implementation task, written the moment it returns, in
+   Patterns A–C only (in Pattern D loop owns the scope and its `progress.md` is the record).
+   `gwt-tests.md` is the TT record; these lines are the implementation counterpart, and a
+   resume re-runs only the tasks without one. Re-dispatch rounds write none — the
+   `dispatched` line covers them.
+3. `phase3 complete` — written the moment Phase 3 execution ends.
+4. `round N dispatched: {tasks}` — written **just before** the round's workers are spawned,
    never after. Without it, a compaction between dispatch and recheck restores N to the
    previous value and the same task is sent a third time.
-3. The round's verdict table — written at round end, after the full recheck. The initial
+5. The round's verdict table — written at round end, after the full recheck. The initial
    check (no dispatch) is round 0.
 
 ```markdown
 # requirement-check — {spec name}
 spec: sha256 {64 hex of spec.md}
 
+task T1 done
+task T3 done
 phase3 complete
 
 ## round 0
@@ -125,7 +136,9 @@ so when a run ends unmet.
 
 **Resume rules** (after compaction, and after the run-identity check, read this file first):
 - No file, or no `phase3 complete` line → Phase 3 is still running. Resume Phase 3 as before
-  (re-run TTs without a `gwt-tests.md` block, then the remaining tasks) and run no check.
+  (re-run TTs without a `gwt-tests.md` block, then the implementation tasks without a
+  `task {id} done` line; after Pattern D, re-invoke loop, which resumes from its own
+  `progress.md`) and run no check.
 - `phase3 complete` and nothing after it → round 0: run a full recheck.
 - The last entry is a `round N dispatched` line with no `## round N` table after it → the
   round's workers may or may not have finished; the working tree is the truth. Run a full
@@ -140,11 +153,14 @@ so when a run ends unmet.
 
 ## 3. TT worker prompt
 
-One `Agent` per TT, regardless of pattern (in Sequential the orchestrator implements tasks
+One subagent per TT, regardless of pattern (in Sequential the orchestrator implements tasks
 itself; the tests still come from a separate context). Fill `{n}`, `{Rn}`, `{specPath}`.
 
+Spawn with `capability:spawn-inline-checker` (`../../../references/runtime-tools.md`: the
+`Agent` tool with the general-purpose type in Claude Code; `define_subagent` then
+`invoke_subagent` under agy) and this prompt:
+
 ```
-Agent(subagent_type="general-purpose", prompt="""
 You are writing acceptance tests for requirement {Rn} of the spec at {specPath}. You did
 not write the spec and you will not implement it; another worker does that after you.
 Expected values come from the spec, never from running or reading the implementation.
@@ -185,7 +201,6 @@ run: {command that runs only your files} | none
 files:
 - {path}
 (or "files: none")
-""")
 ```
 
 On a TTn re-dispatch (reason code `does-not-exercise`, `over-specifies`, or `modified`), the
@@ -198,11 +213,17 @@ rewritten from the spec rather than patched.
 Modelled on specify's Spec Review: a fresh context that receives the inputs below and nothing
 else — not the workers' reasoning, not the orchestrator's transcript. Its changed-file list is
 every path in the orchestrator's `git status --porcelain -uall` — the tree, never the workers'
-reports, which are claims. It reports; it fixes nothing. Checker failures (error, timeout, a line of any other shape, a missing in-scope line)
-are retried once with a new context, then end the run as `requirements check failed`.
+reports, which are claims. It reports; it fixes nothing. Checker failures — an error, a timeout,
+a missing or duplicate line for an in-scope GWT, an `out-of-scope` verdict on an in-scope GWT, or
+grounds that contradict the mapping (`test` for a `manual:` GWT, `read` for a `test:` one) — are
+retried once with a new context, then end the run as `requirements check failed`. A line that
+matches neither shape is ignored, not fatal, and the dash variants are read as one separator.
+
+Spawn with `capability:spawn-inline-checker` (`../../../references/runtime-tools.md`: the
+`Agent` tool with the general-purpose type in Claude Code; `define_subagent` then
+`invoke_subagent` under agy) and this prompt:
 
 ```
-Agent(subagent_type="general-purpose", prompt="""
 You are checking whether an implementation meets its spec's sub-requirements. You did not
 write the spec, the tests, or the code. Judge only what the files and the test runs show.
 Do not edit, create, or delete any file. Propose no fixes.
@@ -244,12 +265,12 @@ over-specifies | modified. `met` is always `ok`. Every line carries all four fie
 `{grounds}` included, with the separators exactly as shown; a line with a field missing
 is rejected. Full example of a `modified` line:
 R2.1: unmet — grounds: test — modified — tests/tt2_projects_api_test.py recorded ab12…, now cd34…
-""")
 ```
 
-The orchestrator's format check accepts only those two shapes and matches the code token,
-never the prose: `does-not-exercise | over-specifies | modified` make TTn the first
-re-dispatch target of the round, before Rn's implementation tasks.
+The orchestrator's validation reads only lines of those two shapes (anything else is ignored),
+checks each against the in-scope set and the mapping as SKILL.md Phase 3.4 step 2 lays out, and
+matches the code token, never the prose: `does-not-exercise | over-specifies | modified` make
+TTn the first re-dispatch target of the round, before Rn's implementation tasks.
 
 ## 5. Re-dispatch worker prompt (common implementation-worker prompt)
 
@@ -259,8 +280,11 @@ everything else is identical, so the orchestrator can rely on `BLOCKED` lines fr
 A re-dispatched task always goes to a **new** worker of the same role; the original DAG
 rules (`Depends on`, file overlap) decide order and parallelism among the targets.
 
+Spawn with `capability:spawn-inline-checker` (`../../../references/runtime-tools.md`: the
+`Agent` tool with the general-purpose type in Claude Code; `define_subagent` then
+`invoke_subagent` under agy) and this prompt:
+
 ```
-Agent(subagent_type="general-purpose", prompt="""
 Implement the task below from the spec at {specPath}. Read the requirements it fulfills
 directly; their Given/When/Then are the acceptance criteria.
 
@@ -283,7 +307,6 @@ If a GWT cannot be met without changing the spec or a decision, do not work arou
 Report it as `BLOCKED: {GWT id} — {reason}` and continue with the others.
 
 Report: the files you changed, and every `FENCED:` or `BLOCKED:` line.
-""")
 ```
 
 A `BLOCKED` GWT is still judged by the checker every round, and a `met` verdict counts as met.

@@ -149,7 +149,9 @@ Scan tasks and decisions for actions outside of code.
 ### L4 Gate
 
 Read spec.md and verify:
-- Every requirement is fulfilled by at least one task
+- Every requirement is fulfilled by at least one implementation task — a TT's
+  `Fulfills: Rn (tests)` does not count; a requirement whose only task is its TT has
+  nothing to build it
 - No circular dependencies in task DAG
 - External dependencies section exists
 
