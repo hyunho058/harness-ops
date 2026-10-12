@@ -30,9 +30,10 @@ Read {specDir}/spec.md. Read repository files when a check needs them.
 Do not edit, create, or delete any file.
 
 Checks:
-1. Coverage — every requirement is fulfilled by at least one implementation task (a
-   `TTn` task's `Fulfills: Rn (tests)` does not count: its tests check Rn, nothing builds
-   it), and every task fulfills at least one requirement.
+1. Coverage — every requirement is fulfilled by at least one implementation task. A
+   `TTn` task does not count toward that: its tests check Rn, and nothing builds it.
+   Separately, every task fulfills at least one requirement — a `TTn` included, whose
+   `Fulfills: Rn (tests)` counts for this half.
 2. Testability — every Given/When/Then could be checked by a test or a command;
    flag any Then that is not observable.
 3. Grounding — every file, function, command, and config key the spec names exists

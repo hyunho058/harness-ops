@@ -24,7 +24,7 @@ prompt = '''
 > substitution applies to every other `../../` path in the body.
 >
 > **If no candidate validates, halt** — say `unresolved: harness root did not validate`. This
-> skill cites pinned, determinism-critical procedures (spawn-inline-checker),
+> skill cites pinned, determinism-critical procedures (spawn-inline-checker spawn-worker),
 > and the map is the only place they are defined. Guessing at one is the substitution the
 > procedure ids exist to prevent.
 
@@ -346,10 +346,12 @@ a detached `HEAD`, or outside a git repository → write the report, notify, and
 nothing.
 
 **Subagent check.** Right after the branch guard, and before Phase 3 runs anything — for
-a spec with no TT tasks too — confirm the runtime's subagent capability is available:
-`capability:spawn-inline-checker` in `../../references/runtime-tools.md`, which is the
-`Agent` tool in Claude Code and `define_subagent` + `invoke_subagent` under agy. Without
-it neither a TT nor the Phase 3.4 checker can be spawned, so nothing in the run can be
+a spec with no TT tasks too — confirm the runtime can spawn subagents:
+`capability:spawn-worker` for TT writers and implementation workers, and
+`capability:spawn-inline-checker` for the requirement checker, both defined in
+`../../references/runtime-tools.md` — the `Agent` tool in Claude Code, `define_subagent`
+then `invoke_subagent` under agy. Without them neither a TT nor the Phase 3.4 checker
+can be spawned, so nothing in the run can be
 verified: write the report with Verification `requirements check failed — no subagent
 capability`, notify, and stop before Phase 3 — the same stop specify's Spec Review makes
 with no subagent tool. This pre-check is additional; Phase 3.4 checks again at check
@@ -372,10 +374,11 @@ Parallel Subagent. Record the pattern, the reason, and the counts the signals us
 excluded) in the report instead of asking.
 
 **Pattern D (Ralph Loop) in this mode.** loop takes the whole scope and spawns no
-per-task agent, so "a TT is always a separate `Agent`" needs its own order here. After
+per-task agent, so "a TT is always a separate subagent" needs its own order here. After
 the park step, run the TT tasks — and the `[infra]` tasks they depend on — first, as
-`Agent` workers in DAG order, writing `gwt-tests.md` as each TT finishes (see "run TT
-tasks first" below). Then hand **only the remaining tasks** to loop as the scope. Those
+subagent workers (`capability:spawn-worker`) in DAG order, writing `gwt-tests.md` as
+each TT finishes (see "run TT tasks first" below). Then hand **only the remaining
+tasks** to loop as the scope. Those
 `[infra]` tasks still count in the Phase 2 signals: running them ahead of loop is
 execution order, not pattern choice.
 
@@ -425,12 +428,19 @@ today. Re-dispatch is not a recovery path for an escalation.
      the "never modify a listed test file" rule does not bind you here.
 2. Run the remaining tasks with the chosen pattern — TT tasks first, as the next
    subsection lays out. Before the first of them runs, create
-   `{specDir}/requirement-check.md` with its `spec: sha256 {hash}` line (§2), and in
-   Patterns A–C append `task {id} done` the moment each implementation task returns:
-   `gwt-tests.md` is the TT record, these lines are the implementation record, and a
-   resume re-runs only the tasks without one. Without them a compaction mid-Phase 3
-   leaves you guessing between redoing finished work and skipping unfinished work.
-   Pattern D writes none; loop's `progress.md` is its record.
+   `{specDir}/requirement-check.md` with its `spec: sha256 {hash}` line and one `task
+   {id} parked — {reason}` line per task step 1 parked (§2). From then on, write every
+   task event to the ledger the moment you learn it, in Phase 3 and in re-dispatch
+   rounds alike: `task {id} parked — {reason}` for a FENCED report and for each
+   dependent it parks (`depends on {id}`); `task {id} blocked {GWT} — {reason}` for
+   each `BLOCKED:` line a worker returns; and, in Patterns A–C during Phase 3 only,
+   `task {id} done` the moment an implementation task returns. `gwt-tests.md` is the
+   TT record and these lines are everything else: a resume re-runs only the tasks with
+   neither a `done` nor a `parked` line, and rebuilds the parked set and the BLOCKED
+   GWTs from the file, never from memory. Without them a compaction mid-Phase 3 leaves
+   you guessing between redoing finished work and skipping unfinished work, and sends a
+   task that reported FENCED out again. Pattern D writes no `done` lines; loop's
+   `progress.md` is its record.
 3. Every worker prompt (subagent, team member, or your own step) includes: "If this task
    needs a change to a database schema, a migration that can lose data, auth /
    permission / access control, payment, or security (secrets, crypto), do not make it.
@@ -443,53 +453,79 @@ today. Re-dispatch is not a recovery path for an escalation.
    others"), and "do not modify any test file listed in `gwt-tests.md`"; on a first
    dispatch the "Unmet" block and the keep-green line are omitted. Initial workers must
    be able to report BLOCKED too: the check's "nothing to re-dispatch after round 0" exit
-   depends on it. Keep every `BLOCKED:` line a worker returns — the check reads them.
+   depends on it. Keep every `BLOCKED:` line a worker returns — step 2 writes it to the
+   ledger, and re-dispatch targeting reads it from there.
 4. If nothing is left to run — at the start, or after FENCED reports — skip the rest of
    Phase 3, Phase 3.4 and Phase 3.5, record Verification as `skipped — all tasks parked`,
    and go to Phase 4.
 
 **Phase 3 — run TT tasks first.**
-1. **TTs are always separate subagent workers** (`capability:spawn-inline-checker`),
-   whatever the pattern — Sequential
-   included: there you implement the tasks yourself, and if you also wrote the tests the
-   maker and the checker would be one context. Never write a TT's tests yourself. Run
-   them in DAG order: after the `[infra]` tasks they depend on (those run with the chosen
-   pattern like any other task), every ready TT goes out in one message, in parallel; the
-   implementation tasks that depend on them wait. The prompt is §3, filled per TT. A spec
+1. **TTs are always separate subagent workers** (`capability:spawn-worker`), whatever
+   the pattern — Sequential included: there you implement the tasks yourself, and if you
+   also wrote the tests the maker and the checker would be one context. Never write a
+   TT's tests yourself. Run them in DAG order: after the `[infra]` tasks they depend on
+   (those run with the chosen pattern like any other task), every ready TT goes out in
+   one message, in parallel; the implementation tasks that depend on them wait. A TT
+   batch runs alone: start it once no other worker is in flight, and start no other
+   worker until it returns, so everything that changes between its before and after
+   snapshots (step 3) is the batch's doing. The prompt is §3, filled per TT. A spec
    with no TT tasks (from a specify run before TTs existed) skips this whole subsection
    and gets no `gwt-tests.md`.
 2. **You write `gwt-tests.md`** (§1); a TT returns text and never touches the file.
    Create `{specDir}/gwt-tests.md` with the `spec: sha256 {hash}` line (§2 "Run
    identity") and the R0 block — every R0 GWT `manual: goal-level`, written by you,
-   since R0 has no TT and so no return value — before the first TT is dispatched, then
-   append one block as each TT finishes, measuring each listed file's
-   hash yourself with `shasum -a 256`. A hash a worker returns is a claim, not evidence.
+   since R0 has no TT and so no return value — before the first TT is dispatched. Then,
+   once a batch returns and step 3 is done, write one block per TT, in three moves:
+   - **Check the return against the tree.** Every `test:` file appears under `files:`;
+     every listed file exists, starts with `tt{n}_`, and is a new untracked entry in the
+     batch's snapshot diff; every new `tt{n}_` entry in that diff is listed. A return
+     that fails any of these is a TT failure (step 5, reason `return does not match the
+     files written`): a file with no recorded hash would escape the checker's `modified`
+     code and Phase 4.2's guard.
+   - **Format the listed files**, and only those, with the project's formatter and its
+     lint autofix — `prettier --write`, `ruff format`, `black`, `gofmt -w`, whichever
+     the project configures; none, skip this. Formatters are idempotent, so a later
+     whole-tree format run — a worker's, or loop's Auto-fix in Phase 3.5 — leaves the
+     files byte-identical. Hashed unformatted, the first such run would read as
+     `modified` mid-round and as `requirements check failed` at Phase 4.2.
+   - **Measure each file's hash yourself** with `shasum -a 256`, and append the block.
+     A hash a worker returns is a claim, not evidence.
    Writing per TT is what makes resume cheap: a TT that has a block is not re-run.
-3. **No test runner.** When nothing in `package.json` scripts, `Makefile`,
+3. **Snapshot check, after every TT batch.** Take `git status --porcelain -uall` right
+   before a batch is dispatched and right after it returns, and `git hash-object` every
+   file the "before" snapshot already lists; `-uall` keeps a new test directory from
+   collapsing into one `?? tests/` line that no basename would match. A TT creates new
+   `tt{n}_` files and nothing else, so every other difference is a rule break, whether
+   the TT succeeded or not: a tracked file that went from clean to ` M` or ` D` (a
+   rename shows as a ` D` plus a `??`); a new file whose basename carries no batch TT's
+   `tt{k}_` prefix — a shared `conftest.py`, a fixture directory, an `__init__.py`; and
+   a file already listed before the batch whose hash moved. The batch ran alone (step
+   1), so all of it is the batch's doing. Restore a clean-before tracked file with `git
+   checkout -- {file}` and remove a new unprefixed file. A file already changed before
+   the batch cannot be restored from git without losing the earlier work, so leave it.
+   Write each to the ledger as `batch {TT ids} reverted {file}` or `batch {TT ids}
+   changed {file}` and list it in the report; Phase 4.2's scope check sees the
+   unrestored ones again before anything is committed.
+4. **No test runner.** When nothing in `package.json` scripts, `Makefile`,
    `pyproject.toml`, or CI config defines a test command, the TT writes no files and
    returns every GWT as `manual: no test runner` (§3). Record the block as returned; the
    check then reads code for those GWTs, and the report's grounds ratio shows `read`
    100%, so the person sees how weak the evidence is.
-4. **TT failure or FENCED.** On an error, a timeout, or a `FENCED:` report, park that
-   TT only. Record every GWT of its Rn as `manual: TT failed — {reason}` or `manual: TT
+5. **TT failure or FENCED.** On an error, a timeout, a `FENCED:` report, or a return
+   that fails step 2's check, park that TT only and write `task TT{n} parked —
+   {reason}`. Record every GWT of its Rn as `manual: TT failed — {reason}` or `manual: TT
    fenced — {reason}` (a block with no run line and no files), and run Rn's
-   implementation tasks anyway: the edge is ordering-only (park step 1). The TT returned
-   no file list, so clean up from the `git status --porcelain -uall` snapshots you take
-   before and after each TT: remove only the **new** entries whose basename starts with
-   `tt{n}_`. The prefix keeps a parallel sibling's files safe — never remove another TT's
-   files from the same batch — and `-uall` keeps a new test directory from collapsing
-   into one `?? tests/` line that no basename would match. Compare the whole snapshots
-   too, for every TT, succeeded or not — a returned file list is a claim: a tracked file
-   that was clean before and shows ` M` after is a rule break, since a TT never edits an
-   existing file. If no other worker ran between the two snapshots, restore it with
-   `git checkout -- {file}`; if a parallel batch was running the change cannot be
-   attributed, so leave it and list the file in the report under `possibly modified by
-   TT{n}` — Phase 4.2's scope check sees it again before anything is committed.
-5. **On resume**, re-run only the TTs that have no `gwt-tests.md` block. Before re-running
-   one there is no "before" snapshot — compaction took it — so first remove every
-   untracked (`??`) entry of `git status --porcelain -uall` whose basename starts with
-   `tt{n}_`: TTs create new files only, so those are that TT's, left by a run that wrote
-   files and was cut off before its block.
+   implementation tasks anyway: the edge is ordering-only (park step 1). Remove the new
+   entries of the batch's snapshot diff whose basename starts with `tt{n}_` — the prefix
+   keeps a parallel sibling's files safe, so never remove another TT's files from the
+   same batch. Step 3 has already reverted everything else.
+6. **On resume**, re-run only the TTs that have no `parked` line and either no
+   `gwt-tests.md` block or a `re-dispatching` stub for one (Phase 3.4 step 3). Before
+   re-running one there is no "before" snapshot — compaction took it — so first remove
+   every untracked (`??`) entry of `git status --porcelain -uall` whose basename starts
+   with `tt{n}_`: TTs create new files only, so those are that TT's, left by a run that
+   wrote files and was cut off before its block. Unprefixed debris cannot be told apart
+   from finished work at that point; Phase 4.2's scope check is what catches it.
 
 **Phase 3.4 — Requirement Check (unattended only).** Between Phase 3 and Phase 3.5: judge
 every sub-requirement GWT of the spec, re-dispatch the tasks behind the unmet ones, and
@@ -516,19 +552,27 @@ judge again — the formats and prompts are §2, §4, and §5.
    earlier; this is its fallback), stop before the check: write the report with
    Verification `requirements check failed — no subagent capability`, notify, run no
    Phase 3.5, commit nothing. Validate the returned lines against what you already
-   know, not against shape alone. First drop every line that matches neither §4 shape —
-   a preamble, a blank, a closing remark — and read the separators loosely: `—`, `–`,
-   `-`, `--`, any spacing. Then, over the lines that do match: exactly one line per
-   in-scope GWT, or the check fails — a missing line and a duplicate alike; an
-   `out-of-scope` line for an in-scope GWT is a checker failure, not an exclusion — the
-   out-of-scope set is yours and the checker cannot grow it; grounds `test` on a GWT
-   whose mapping is `manual:` or absent, or grounds `read` on a GWT whose mapping is
-   `test:`, is a checker failure — the procedure was not followed, and a verdict on the
-   wrong evidence is no verdict; a line for a GWT you listed out of scope is ignored
-   whatever it says. An error and a timeout are failures too. Retry once with a new
-   fresh-context checker; a second failure ends the run with `requirements check failed
-   — {reason}` and no re-dispatch — a missing line is not an unmet verdict, and
-   rebuilding on it would be groundless.
+   know, not against shape alone:
+   - **Parse.** Drop every line that matches neither §4 shape — a preamble, a blank, a
+     closing remark. A separator is `—` or `–`, or `-` / `--` with whitespace on both
+     sides; a hyphen inside a token (`does-not-exercise`, `test-fails`, `out-of-scope`,
+     a hyphenated path) never is. Split a line at its first three separators only:
+     everything after the third is `{grounds}`, free text that may contain anything.
+   - **Coverage.** Exactly one line per in-scope GWT — a missing line and a duplicate
+     alike fail the check. An `out-of-scope` line for an in-scope GWT fails it too: the
+     out-of-scope set is yours, and the checker cannot grow it. A line for a GWT you
+     listed out of scope is ignored whatever it says.
+   - **Consistency.** Grounds must match the mapping — `test` only where it gives
+     `test:`, `read` only where it gives `manual:` or nothing — and verdict, grounds,
+     and code must pair as §4 assigns them: `met` only with `ok`, and `ok` only with
+     `met`; `test-fails`, `does-not-exercise`, `over-specifies`, and `modified` only
+     with `test`; `missing` only with `read`. Any other pairing fails the check: a
+     verdict on the wrong evidence is no verdict, and a code that contradicts its
+     verdict would drive targeting — removing a TT's files for a GWT counted met.
+   An error and a timeout are failures too. Retry once with a new fresh-context checker;
+   a second failure ends the run with `requirements check failed — {reason}` and no
+   re-dispatch — a missing line is not an unmet verdict, and rebuilding on it would be
+   groundless.
 3. **Re-dispatch round.** Targets are the implementation tasks (identification key)
    whose `Fulfills` includes the requirement of an unmet GWT, minus the parked ones: if
    Rn is fulfilled by two tasks and one is parked, only the other is a target, and an
@@ -538,15 +582,21 @@ judge again — the formats and prompts are §2, §4, and §5.
    GWT and the spec, not the task — so it too adds nothing to the target count; the
    checker still judges it every round, and its `met` is met. §5 states the same rule.
    Reason codes `does-not-exercise`, `over-specifies`, and `modified` (match the token,
-   not the prose) make TTn the first target of the round: remove the files listed in
-   TTn's current `gwt-tests.md` block — TTs create new files only, so a stale defective
-   or tampered file would otherwise survive and run in Phase 3.5's Gate 1 — re-dispatch
-   TTn (§3, with the checker's lines appended), replace its block with freshly measured
-   hashes, and only then re-dispatch Rn's implementation tasks, so they build against
-   the rewritten tests. Implementation workers get the §5 prompt with the unmet GWTs
-   (BLOCKED ones omitted) and the checker's lines for them. Every re-dispatch worker
-   is a new subagent worker (`capability:spawn-inline-checker`) whatever the pattern —
-   same role, new instance; after Pattern D too, never a second loop call. Several
+   not the prose) make TTn the first target of the round. First replace TTn's
+   `gwt-tests.md` block with a stub — the heading `## TTn — Rn — re-dispatching` and
+   nothing under it — then remove the files the old block listed (TTs create new files
+   only, so a stale defective or tampered file would otherwise survive and run in Phase
+   3.5's Gate 1), re-dispatch TTn as a TT batch (§3 with the checker's lines for Rn
+   appended; TT-first steps 1–3: it runs alone, its return is checked, its files are
+   formatted and hashed), replace the stub with the new block, and only then
+   re-dispatch Rn's implementation tasks, so they build against the rewritten tests.
+   The stub goes first so that a compaction anywhere in that sequence leaves a record:
+   a resume re-runs any TT whose block is a stub (TT-first step 6), where otherwise the
+   mapping would point at removed files and no rule would run TTn again.
+   Implementation workers get the §5 prompt with the unmet GWTs (BLOCKED ones omitted)
+   and the checker's lines for them. Every re-dispatch worker is a new subagent worker
+   (`capability:spawn-worker`) whatever the pattern — same role, new instance; after
+   Pattern D too, never a second loop call. Several
    targets follow the original DAG: dependent tasks in order,
    independent ones (no `Depends on`, no file overlap) spawned in parallel in one
    message. A worker that reports FENCED mid-round parks its task and dependents (park
@@ -568,36 +618,52 @@ judge again — the formats and prompts are §2, §4, and §5.
    `requirements check failed — {reason}` ever claims success or commits; Phase 4
    carries both states.
 5. **Ledger and resume** (§2). Every write to `requirement-check.md` is atomic: the
-   whole new content to `requirement-check.md.tmp`, then rename. Immediately before a
-   round's workers are spawned, write `round N dispatched: {tasks}`; at round end, after
-   the full recheck, write the round's verdict table with its unmet total, dispatched
-   tasks, and the workers' `BLOCKED:` lines. The pre-dispatch line exists because
-   without it a compaction between dispatch and recheck restores N to its previous
-   value and the same task goes out a third time. Both `gwt-tests.md` and the ledger
-   open with `spec: sha256 {hash of spec.md}`, measured by you when you create the file
-   (§2 "Run identity", the counterpart of loop's `contract_ref`). On resume after
-   compaction — and at the start of every run — recompute it before reading either
-   file: a mismatch means the files are an earlier run's on a different spec, so remove
-   the test files the stale `gwt-tests.md` lists, delete both files, and start Phase 3
-   from the beginning instead of resuming a run that never happened on this spec. With
-   a match, read the ledger first:
+   whole new content to `requirement-check.md.tmp`, then rename. Besides the task
+   events park step 2 lists: immediately before a round's workers are spawned, write
+   `round N dispatched: {tasks}`; at round end, after the full recheck, write the
+   round's verdict table with its unmet total, dispatched tasks, and BLOCKED lines; and
+   once the run's Verification state is final, write `run ended: {state}` (Phase 4.2
+   says when). The pre-dispatch line exists because without it a compaction between
+   dispatch and recheck restores N to its previous value and the same task goes out a
+   third time. Both `gwt-tests.md` and the ledger open with `spec: sha256 {hash of
+   spec.md}`, measured by you when you create the file (§2 "Run identity", the
+   counterpart of loop's `contract_ref`). At the start of every run, and on resume after
+   compaction, recompute it before reading either file. A mismatch means the files are
+   an earlier run's on a different spec: remove the test files the stale `gwt-tests.md`
+   lists that are still untracked, delete both files, and start Phase 3 from the
+   beginning. A listed file that is tracked was committed by an earlier green run — an
+   accepted test, not debris — so leave it and list it in the report under "Acceptance
+   tests from an earlier run, kept"; removing it would put its deletion into this run's
+   commit. With a match, the parked set and the BLOCKED GWTs come from the ledger's
+   `task` lines, never from memory, and the ledger's state decides what happens next:
+   - a `run ended:` line → the run is over. On a new invocation, change nothing: notify
+     that this spec's run already ended in that state, with the report path and how to
+     run again (edit the spec, or remove both files), and stop. On a resume after
+     compaction, finish Phase 4 for that state: rewrite the report; for a green state,
+     commit only if `git status --porcelain` still shows the run's changes — a clean
+     tree means the commit already landed, so take its sha from `git log -1`; then
+     notify;
    - no file, or no `phase3 complete` line → Phase 3 is still running: resume it as
-     before (TTs without a `gwt-tests.md` block, then the implementation tasks without
-     a `task {id} done` line; after Pattern D, re-invoke loop, which resumes from its
+     before (TTs per TT-first step 6, then the implementation tasks with neither a
+     `done` nor a `parked` line; after Pattern D, re-invoke loop, which resumes from its
      own `progress.md`) and run no check — judging tasks that never ran as unmet would
      spend the two rounds on the first build;
-   - `phase3 complete` and nothing after it → round 0: run the full check;
-   - the last entry is a `round N dispatched` line with no `## round N` table after it
-     → run the full check and count its result as the end of round N, whether or not
-     the workers finished. Never resume a worker;
-   - the last entry is a `## round N` table, round 0's included → that check already
-     ran on this tree: do not recheck. Evaluate the exit conditions from the table —
-     its unmet total against the previous table's — and either write `round N+1
-     dispatched` and dispatch, or end. Compaction between a table write and the next
-     `dispatched` line lands here; a second check would compare the tree with itself,
-     find no decrease, and end the run while rounds were still allowed.
-   In every state but the last, the first action after a resume is a full check — the
-   working tree is the truth. A recorded table is a check already run on that tree.
+   - `phase3 complete` and no round entry after it → round 0: run the full check;
+   - the last round entry is a `round N dispatched` line with no `## round N` table
+     after it → re-run any TT whose block is a stub (TT-first step 6, with Rn's lines
+     from the last table appended), then run the full check and count its result as
+     the end of round N, whether or not the workers finished. Never resume a worker;
+   - the last round entry is a `## round N` table, round 0's included → that check
+     already ran on this tree: do not recheck. Evaluate the exit conditions from the
+     table — its unmet total against the previous table's — and either write `round
+     N+1 dispatched` and dispatch, or end. Compaction between a table write and the
+     next `dispatched` line lands here; a second check would compare the tree with
+     itself, find no decrease, and end the run while rounds were still allowed.
+   Round entries are the `dispatched` lines and the tables; `task` and `batch` lines
+   between them do not change which state applies. Only round 0 and a `dispatched`
+   line without its table start with a full check, because there the working tree is
+   the truth. A running Phase 3 is not ready to be judged, a recorded table is a check
+   already run on that tree, and an ended run is not resumed.
 
 **Phase 3.5 — verification without a prompt.** The gate runs only after Phase 3.4 ended
 with zero unmet in-scope GWTs; the check's other exits (`requirements unmet after N
@@ -622,7 +688,9 @@ args:
   boundary — would otherwise land in the green commit unnoticed. This line keeps the
   "never modify a listed test file" constraint through the last phase that edits code,
   and Phase 4.2's hash comparison is the evidence behind it: an instruction to loop is
-  a claim, the re-measured hashes are not.
+  a claim, the re-measured hashes are not. The TT files were formatted before they were
+  hashed (TT-first step 2), so loop's formatting Auto-fix leaves them byte-identical and
+  only a real edit trips the comparison.
 
 A loop escalation (an autonomy boundary, or no progress) ends the gate with
 `escalated: {reason}`; loop notifies through its own unattended channel.
@@ -631,11 +699,12 @@ A loop escalation (an autonomy boundary, or no progress) ends the gate with
 writer of the report; specify writes it only at its own stops, before handing off.
 1. Write the Phase 4 report to `{specDir}/unattended-report.md`, and add: the parked
    tasks with their reasons, the spec's `Status: assumed` decisions, the Spec Review
-   verdict, the branch, and the next step for the person — after `requirements unmet
-   after N rounds` or `requirements check failed — {reason}`, that step says a re-run
-   restarts on its own once the spec is edited, and otherwise resumes the ended run
-   unless `requirement-check.md` and `gwt-tests.md` are removed first (§2 "Run
-   identity"). When Phase 3.4 ran, add its
+   verdict, the branch, and the next step for the person — for any run that did not
+   commit, that step says how to run again: a re-run on an edited spec starts over on
+   its own, and one on an unchanged spec stops at once because the ledger records that
+   this run ended, unless `requirement-check.md` and `gwt-tests.md` are removed first
+   (§2 "Run identity"). Add every file TT-first step 3 reverted or left changed, and
+   every acceptance test kept from an earlier run. When Phase 3.4 ran, add its
    outcome: a per-GWT table from the last check — verdict, grounds kind (`test` or
    `read`), reason code, the round in which the GWT first became `met` (0 for the
    initial check; `—` while still unmet),
@@ -645,8 +714,11 @@ writer of the report; specify writes it only at its own stops, before handing of
    weak the evidence is); and a summary of `requirement-check.md` — the rounds run and
    the tasks each round dispatched. Copy the verdicts as the checker returned them
    (Rule 7).
-2. **Commit on green only.** The run is green only when all four hold: nothing was
-   parked; Phase 3.4 ended with every in-scope GWT met; the verification state is
+2. **Commit on green only.** The run is green only when all four hold: no
+   implementation task was parked — a TT parked by its own failure or FENCED report
+   does not count, since its requirement was still built and judged on `read` grounds,
+   which the report's grounds ratio shows; Phase 3.4 ended with every in-scope GWT met;
+   the verification state is
    `passed (N iterations)` — or, for a Pattern D run with no re-dispatch round,
    `embedded in Loop pattern` with a Loop Report verdict of all gates passed; and every
    file `gwt-tests.md` lists still matches its recorded hash — re-measure each with
@@ -656,7 +728,12 @@ writer of the report; specify writes it only at its own stops, before handing of
    {files}`, leave everything uncommitted, and name the files in the report. A run that
    never reached a completed check is not green whatever loop reported: a Pattern D run
    whose gates all passed but that ended `requirements check failed — {reason}` stays
-   uncommitted. Then commit on the current branch:
+   uncommitted. The state is now final, green or not: write `run ended: {Verification
+   state}` to the ledger, when there is one, before any commit command — so a
+   re-invocation on the same spec stops instead of re-entering Phase 3.5 and the
+   commit, and a resume after compaction finishes this phase instead of re-running the
+   check. The Phase 3.4 no-subagent fallback, which writes its report directly, writes
+   the same line before its notification. Then, on green, commit on the current branch:
    1. Re-run the branch guard, and write "Commit: on `{branch}`, see `git log -1`"
       into the report first.
    2. `git add -A`, then `git add -f {specDir}/unattended-report.md` — `specs/` is

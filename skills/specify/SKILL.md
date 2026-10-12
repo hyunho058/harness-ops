@@ -219,7 +219,7 @@ list (`skills/loop/SKILL.md` › Autonomy Boundary), applied from the spec onwar
 | L1 | Auto | Unchanged |
 | L2 | Interview → L2-reviewer → user approves | specify answers each question from the request, then the codebase, then its own best choice (`Status: assumed`); fenced checkpoints stay open; L2-reviewer still runs |
 | L3 | User approves | Self-checks only; a sub-requirement that describes code behavior names its boundary in When (route, CLI command, public function or module, event) or carries `(manual)` at the end of its heading, and each requirement heading ends with its decision ids |
-| L4 | Spec Review → user approves Execute | Fenced tasks marked; one acceptance-test task `TTn` per requirement `R1` and above (`Fulfills: Rn (tests)`) that Rn's implementation tasks depend on; Spec Review is the gate; on PASS add `- **Approved by**: unattended (request marker)` and hand off with `mode: unattended` |
+| L4 | Spec Review → user approves Execute | Fenced tasks marked; one acceptance-test task `TTn` per requirement `R1` and above (`Fulfills: Rn (tests)`) that Rn's non-`[infra]` implementation tasks depend on; Spec Review is the gate; on PASS add `- **Approved by**: unattended (request marker)` and hand off with `mode: unattended` |
 
 **Marker chain.** agent-orchestrate and loop act unattended only when their invocation
 carries the marker AND the spec file, which they read themselves, has both
@@ -233,8 +233,10 @@ later.
 - the request is too vague to state a goal with at least one checkable done criterion;
 - the Spec Review can't run (no subagent tool) or still returns NEEDS_FIX after its last
   re-review;
-- nothing would be left to run once every fenced task and every task that depends on
-  one, directly or transitively, is set aside.
+- no implementation task (one that is not a `TTn`) would be left to run once every
+  fenced task and every task that depends on one, directly or transitively, is set
+  aside. TTs survive that walk, but agent-orchestrate parks a TT whose requirement
+  nobody implements, so a spec left with only TTs would run nothing.
 
 **Report and notify.** At each of these stops, write `{specDir}/unattended-report.md` —
 why it stopped, what was assumed, what would be parked, the review verdict, the branch,

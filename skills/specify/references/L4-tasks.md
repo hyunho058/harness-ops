@@ -116,9 +116,14 @@ Append the Tasks section to spec.md:
 - **Unattended runs only:** for every requirement `R1` and above, L4 also emits an
   acceptance-test task `TTn: acceptance tests for Rn's GWTs` with `Fulfills: Rn (tests)`.
   Its `Depends on` lists only the `[infra]` tasks that Rn's implementation tasks depend
-  on, directly or transitively — no other infra, and never an implementation task, so
-  TTs have no edges between each other and run in parallel. Each implementation task
-  that fulfills Rn gets `Depends on: TTn` (one per Rn it fulfills). With the template
+  on, directly or transitively, and whose own dependencies, followed all the way down,
+  are `[infra]` tasks too — no other infra, and never an implementation task, so TTs
+  have no edges between each other and run in parallel. Each non-`[infra]`
+  implementation task that fulfills Rn gets `Depends on: TTn` (one per Rn it fulfills);
+  an `[infra]` task never does, even one that fulfills Rn. Those two limits keep the DAG
+  acyclic: a TT waits only on infra that never waits on a TT, so no path leaves a TT and
+  comes back to one. Without them an `[infra]` task that fulfills R1 would need
+  `Depends on: TT1` while TT1 depends on it. With the template
   above: `TT1`–`TT4` all depend on `T1` (the only `[infra]` task; `T4` reaches it through
   `T2` and `T3`), `T2` becomes `Depends on: T1, TT1`, `T3` becomes `Depends on: T1, TT2`,
   and `T4` becomes `Depends on: T2, T3, TT3, TT4`. A TT creates NEW test files only, with
@@ -242,13 +247,17 @@ marker is unchanged and still hands off on Execute.
 **Unattended bypass (additive, opt-in — see specify `SKILL.md` › `## Unattended Mode`):**
 if the user's invocation carries `mode: unattended`, print the Plan Summary and SKIP this
 `AskUserQuestion`. The Spec Review stands in for the person:
-- **PASS**, and something is left to run once every fenced task and every task that
-  depends on one (directly or transitively) is set aside → add the lines
+- **PASS**, and at least one implementation task — a task that is not a `TTn` — is left
+  to run once every fenced task and every task that depends on one (directly or
+  transitively) is set aside → add the lines
   `- **Approved by**: unattended (request marker)` and `- **Approved at**: {date}` to
   `## Meta`, then use the **Unattended handoff** below.
-- **NEEDS_FIX** after the last re-review, a review that couldn't run, or nothing left
-  to run → stop: write `{specDir}/unattended-report.md`, send the notification, and do
-  not hand off. `Approved by` is never written on these paths.
+- **NEEDS_FIX** after the last re-review, a review that couldn't run, or no
+  implementation task left to run → stop: write `{specDir}/unattended-report.md`, send
+  the notification, and do not hand off. `Approved by` is never written on these paths.
+  TTs depend only on `[infra]` tasks, so they survive the fenced walk; counted as work
+  left to run, they would hand off a spec whose every TT agent-orchestrate then parks,
+  because a TT whose requirement nobody implements is parked with it.
 
 ### Handoff to Execution (on Execute)
 
