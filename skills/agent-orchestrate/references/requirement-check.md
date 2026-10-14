@@ -9,19 +9,20 @@ receive the prompts below and return text.
 contains `(tests)`). Every other task, including `[infra]`, is an implementation task. Signal
 exclusion, TT-first execution, park non-propagation, and re-dispatch targeting all use this key.
 
-**File cleanup around TTs.** A TT creates new `tt{n}_` files and nothing else, and a TT batch
-runs with no other worker in flight. The orchestrator takes `git status --porcelain -uall` right
-before and right after each batch; `-uall` keeps a new test directory from collapsing into one
-`?? tests/` line that would never match a basename. Every difference other than a new file
-prefixed `tt{k}_` for a TT k of the batch is a rule break: a tracked file that went to ` M` or
-` D` is restored with `git checkout --`, a new unprefixed file (`conftest.py`, a fixture
-directory, `__init__.py`) is removed, and each is recorded in the ledger and the report. For a
-failed or fenced TT, its own `tt{n}_` files from that diff are removed too; the prefix keeps a
-parallel sibling's files safe. On resume there is no "before" snapshot, so before re-running a
-TT that has no block, or a `re-dispatching` stub, every untracked (`??`) file whose basename
-starts with `tt{n}_` is treated as that TT's and removed. Before a TTn re-dispatch, remove the
-files the old block listed instead — the block is the record for a TT that finished. SKILL.md
-TT-first steps 3, 5, and 6 give the full procedure.
+**File cleanup around TTs.** A TT creates the new `tt{n}_` files its return lists and nothing
+else, and a TT batch runs with no other worker in flight. The orchestrator takes `git status
+--porcelain -uall` right before and right after each batch, and stores every file the first
+snapshot lists with `git hash-object -w`; `-uall` keeps a new test directory from collapsing
+into one `?? tests/` line that would never match a basename. Every other difference is a rule
+break and is undone: a tracked file that went to ` M` or ` D` is restored with `git checkout
+--`, a file listed before the batch is restored from its stored blob, and a new file no return
+lists — a `conftest.py`, a fixture directory, an `__init__.py`, a `__pycache__/` entry — is
+removed; each is recorded in the ledger and the report. A TT whose return fails its check, or
+that reported FENCED, also loses the new files it listed. On resume there is no "before"
+snapshot, so before re-running a TT that has no block, every untracked (`??`) file whose
+basename starts with `tt{n}_` is treated as that TT's and removed. Before a TTn re-dispatch,
+remove the files its block lists instead — the block is the record for a TT that finished.
+SKILL.md TT-first steps 3, 5, and 6 give the full procedure.
 
 ## 1. `gwt-tests.md` — GWT to test mapping
 
@@ -36,11 +37,12 @@ returned list, at the moment the block is written and again after a TTn re-dispa
 block is replaced). A TT never returns hashes: a 64-character hex string from an LLM worker is
 a claim, not evidence ("A claim in the args is not evidence; read the file" — SKILL.md,
 Unattended Mode). Two steps come first. The return is checked against the tree: every `test:`
-file is under `files:`, every listed file is a new `tt{n}_` file the batch wrote, and every such
-file is listed — a return that fails is a TT failure, since a file without a recorded hash
-escapes the `modified` check. Then the project's formatter, with its lint autofix, runs on the
-listed files only. Formatters are idempotent, so a later whole-tree format run leaves the files
-byte-identical, and the hash keeps meaning "the tests the checker judged".
+file is under `files:`, and every listed file is a new `tt{n}_` file the batch wrote — a return
+that fails is a TT failure. A new file the return leaves out has already been removed by the
+snapshot check, so no test file stays in the tree without a recorded hash. Then the project's
+formatter, with its lint autofix, runs on the listed files only. Formatters are idempotent, so
+a later whole-tree format run leaves the files byte-identical, and the hash keeps meaning "the
+tests the checker judged".
 
 ```markdown
 # gwt-tests — {spec name}
@@ -71,10 +73,8 @@ writes: `manual: goal-level` (R0 has no TT, so no return value), `manual: TT fai
 and `manual: TT fenced — {reason}` (the TT errored, timed out, or reported FENCED — a block
 with no run line and no files; Rn's implementation tasks still run), and `manual: parked`
 (every implementation task of Rn became parked after the TT ran; the TT's files are removed
-at the same time and those GWTs leave the check scope). One more form is temporary: the
-`re-dispatching` stub — the heading `## TTn — Rn — re-dispatching` with nothing under it —
-replaces TTn's block for the length of a TTn re-dispatch, and a resume re-runs any TT whose
-block is a stub.
+at the same time, the block keeps no run line and no files, and those GWTs leave the check
+scope — a removed file left in the list would fail SKILL.md Phase 4.2's hash re-measure).
 
 ## 2. `requirement-check.md` — round ledger
 
@@ -83,13 +83,14 @@ each by **atomic write**: write the whole new content to `{specDir}/requirement-
 then rename over the target. The file is the resume state for the check loop (the counterpart
 of loop's `progress.md`); `specs/` is gitignored, so it is never committed.
 
-1. `spec: sha256 {hash of spec.md}` — the first line, written when Phase 3 starts executing
-   (after the park step); this is what creates the file. The hash is the run identity (below).
+1. `spec: sha256 {hash of spec.md}` — the line right under the `#` heading, written with it
+   when Phase 3 starts executing (after the park step); the two lines are what create the
+   file. The hash is the run identity (below).
 2. Task events, each written the moment it is known, in Phase 3 and in rounds alike:
    `task {id} parked — {reason}` (the park step's tasks right after the `spec:` line, then
    every FENCED report and each dependent it parks); `task {id} blocked {GWT} — {reason}`
-   (every `BLOCKED:` line a worker returns); `batch {TT ids} reverted {file}` or `changed
-   {file}` (the TT snapshot check); and `task {id} done`, one per implementation task as it
+   (every `BLOCKED:` line a worker returns); `batch {TT ids} reverted {file}` (the TT
+   snapshot check); and `task {id} done`, one per implementation task as it
    returns, in Patterns A–C during Phase 3 only — in Pattern D loop owns the scope and its
    `progress.md` is the record, and rounds need none because the `dispatched` line covers
    them. `gwt-tests.md` is the TT record and these lines are everything else: a resume re-runs
@@ -101,9 +102,11 @@ of loop's `progress.md`); `specs/` is gitignored, so it is never committed.
    previous value and the same task is sent a third time.
 5. The round's verdict table — written at round end, after the full recheck. The initial
    check (no dispatch) is round 0.
-6. `run ended: {Verification state}` — written once the state is final, before any commit
-   command (SKILL.md Phase 4.2). It marks the run as over, so a later invocation on the same
-   spec stops instead of resuming.
+6. `run ended at {sha}: {Verification state}` — written once the state is final, before any
+   commit command (SKILL.md Phase 4.2), with `git rev-parse HEAD` as `{sha}`; a green run
+   writes `run ended at {sha}, commit due: {state}`. It marks the run as over: a later
+   invocation on the same spec stops, except to land a due commit that `HEAD` shows never
+   happened.
 
 ```markdown
 # requirement-check — {spec name}
@@ -134,7 +137,7 @@ unmet: 1 of 6 in scope (R2.3)
 dispatched this round: T3
 blocked: R2.3 — T3: conflicts with the D4 payload format
 
-run ended: requirements unmet after 1 rounds
+run ended at {40 hex of HEAD}: requirements unmet after 1 rounds
 ```
 
 The footer lines carry the stop-condition inputs: the unmet total (compared with the previous
@@ -145,8 +148,9 @@ only on `does-not-exercise`, `over-specifies`, or `modified` (SKILL.md Phase 3.4
 round 1 the only unmet GWT is BLOCKED, so there is nothing left to target and the run ends.
 R4.1 is out of scope because T5, the only task that fulfills R4, is parked.
 
-**Run identity.** Both files open with `spec: sha256 {hash}` — the `shasum -a 256` of `spec.md`,
-measured by the orchestrator when it creates the file (the counterpart of loop's `contract_ref`).
+**Run identity.** In both files the line right under the `#` heading is `spec: sha256 {hash}`:
+the `shasum -a 256` of `spec.md`, measured by the orchestrator when it creates the file (the
+counterpart of loop's `contract_ref`). Compare that line, never the heading.
 Whenever either file is read — at the start of a run or on resume — recompute the hash first. A
 mismatch means the files belong to an earlier run on a different spec, not to this one: remove
 the listed test files that are still untracked, delete both files, and start Phase 3 from the
@@ -154,31 +158,38 @@ beginning. A listed file that is tracked was committed by an earlier green run; 
 test, so it stays and the report names it — deleting it would put the deletion into this run's
 commit. Without the hash line a re-invocation on an edited spec would read the old ledger as a
 resume, skip Phase 3, and end again with the old verdict. With matching hashes the files are this
-run's, and the resume rules below apply. A ledger that holds `run ended:` belongs to a finished
-run, so a new invocation on the unchanged spec stops at once and says so; to start over without
-editing the spec, remove the two files.
+run's, and the resume rules below apply. A ledger that holds a `run ended` line belongs to a
+finished run, so a new invocation on the unchanged spec stops at once and says so, landing first
+a due commit that never happened; to start over without editing the spec, remove the two files.
 
-**Resume rules** (after compaction, and after the run-identity check, read this file first; the
-parked set and the BLOCKED GWTs always come from its `task` lines):
-- A `run ended:` line → the run is over. A new invocation changes nothing and stops with a
-  notification. A resume after compaction finishes Phase 4 for that state, committing a green
-  run only if the tree still holds its changes — a clean tree means the commit already landed.
+**Resume rules** (on a new invocation and after compaction alike, once the run-identity check
+passes; the parked set and the BLOCKED GWTs always come from the `task` lines):
+- `run ended at {sha}, commit due:` and `HEAD` still at `{sha}` → the run ended before its
+  commit landed: run SKILL.md Phase 4.2's commit steps, then notify.
+- Any other `run ended` line → the run is over. Change nothing; notify with the state, the
+  report path, and the commit from `git log -1` when `HEAD` has moved, and stop. The ledger and
+  `HEAD` decide this, never whether the tree is clean: a leftover file keeps a committed tree
+  dirty.
 - No file, or no `phase3 complete` line → Phase 3 is still running. Resume Phase 3 as before
-  (re-run the TTs with no `parked` line that have no `gwt-tests.md` block or a `re-dispatching`
-  stub, then the implementation tasks with neither a `done` nor a `parked` line; after Pattern
-  D, re-invoke loop, which resumes from its own `progress.md`) and run no check.
+  (re-run the TTs with neither a `gwt-tests.md` block nor a `parked` line, then the
+  implementation tasks with neither a `done` nor a `parked` line; after Pattern D, re-invoke
+  loop, which resumes from its own `progress.md`) and run no check.
 - `phase3 complete` and no round entry after it → round 0: run a full recheck.
-- The last round entry is a `round N dispatched` line with no `## round N` table after it → the
-  round's workers may or may not have finished; the working tree is the truth. Re-run any TT
-  whose block is a `re-dispatching` stub, with Rn's lines from the last table appended, then
-  run a full recheck and count its result as the end of round N (it decides the stop condition
-  exactly as a normal round end would).
+- The last round entry is a `round N dispatched` line with no `## round N` table after it →
+  round N was cut off, and which of its workers ran is unknown. Run it again from the start:
+  recompute its targets from the last table and the `task` lines as they now stand, rewrite
+  the `dispatched` line with them, and dispatch them all to new workers — a TT target is
+  rewritten whether or not its block was already replaced, after its listed files and every
+  untracked `tt{n}_` file are removed. Then run the full recheck as the end of round N. A check
+  counted as the end of a round whose workers never ran would let the non-decrease exit end
+  the run with rounds still allowed.
 - The last round entry is a `## round N` table (round 0's included) → that round's check already
   ran on this tree. Do **not** recheck: evaluate the exit conditions from the table — its unmet
   total against the previous table's — and either write `round N+1 dispatched` and dispatch,
   or end. A second check here would compare the tree with itself, find no decrease, and end
   the run while rounds were still allowed.
-- Never resume a worker; a half-finished re-dispatch is simply what the recheck sees.
+- Never resume a worker: a cut-off worker's partial edits stay in the tree, and the new worker
+  starts from them.
 
 Round entries are the `dispatched` lines and the tables; `task` and `batch` lines between them
 do not change which rule applies.
@@ -222,8 +233,11 @@ It is normal for your tests to fail now.
    satisfies both (the configured pattern demands another prefix), write no files and
    return every GWT as `manual: collection pattern excludes the tt prefix`. Never edit,
    delete, or rename an existing file of any kind, and add no file without the prefix:
-   put every fixture and helper inside your own `tt{n}_` files. A `conftest.py`, a
-   fixture directory, or an `__init__.py` you add is reverted. Do not implement anything.
+   put every fixture and helper inside your own `tt{n}_` files. List every file you
+   create under `files:`; any other new file — a `conftest.py`, a fixture directory, an
+   `__init__.py`, an unlisted test file, a cache your test run left — is removed. Run
+   no git command that changes the index, a branch, or `HEAD`: leave your files
+   untracked. Do not implement anything.
 5. If this task needs a change to a database schema, a migration that can lose data,
    auth / permission / access control, payment, or security (secrets, crypto), do not
    make it. Stop and report `FENCED: {area} — {what you found}`.
@@ -239,10 +253,9 @@ files:
 ```
 
 On a TTn re-dispatch (reason code `does-not-exercise`, `over-specifies`, or `modified`), the
-orchestrator has already replaced the block with a `re-dispatching` stub and removed the old
-files; it sends the same prompt with the checker's lines for that Rn — taken from the last round
-table on a resume — appended under "Previous attempt — the checker found:", so the tests are
-rewritten from the spec rather than patched.
+orchestrator has already removed the files the old block listed; it sends the same prompt with
+the checker's lines for that Rn, from the last round table, appended under "Previous attempt —
+the checker found:", so the tests are rewritten from the spec rather than patched.
 
 ## 4. Checker agent prompt
 
@@ -341,6 +354,9 @@ Keep every GWT already judged met green; the recheck covers all of them, not onl
 
 Do not modify any test file listed in {specDir}/gwt-tests.md. Those tests are the check;
 if one looks wrong, say so in your report and leave it.
+
+Run no git command that changes the index, a branch, or HEAD (no `git add`, `git commit`,
+or `git stash`). The run commits once, at the end, and only if every check passes.
 
 If this task needs a change to a database schema, a migration that can lose data,
 auth / permission / access control, payment, or security (secrets, crypto), do not
