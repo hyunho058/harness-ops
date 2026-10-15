@@ -81,7 +81,9 @@ scope — a removed file left in the list would fail SKILL.md Phase 4.2's hash r
 Path: `{specDir}/requirement-check.md`. Six kinds of entry, all written by the orchestrator,
 each by **atomic write**: write the whole new content to `{specDir}/requirement-check.md.tmp`,
 then rename over the target. The file is the resume state for the check loop (the counterpart
-of loop's `progress.md`); `specs/` is gitignored, so it is never committed.
+of loop's `progress.md`). It is never committed: `specs/` is usually gitignored, and where it
+is not, Phase 4.2's scope check leaves the file out. The TT snapshot check and the checker's
+changed-file list leave it out too, along with `gwt-tests.md` and the report.
 
 1. `spec: sha256 {hash of spec.md}` — the line right under the `#` heading, written with it
    when Phase 3 starts executing (after the park step); the two lines are what create the
@@ -162,10 +164,13 @@ run's, and the resume rules below apply. A ledger that holds a `run ended` line 
 finished run, so a new invocation on the unchanged spec stops at once and says so, landing first
 a due commit that never happened; to start over without editing the spec, remove the two files.
 
-**Resume rules** (on a new invocation and after compaction alike, once the run-identity check
-passes; the parked set and the BLOCKED GWTs always come from the `task` lines):
+**Resume rules** (on a new invocation and after compaction alike, once the run-identity
+check passes — it runs right after the branch guard, before Phase 3 writes anything; the
+parked set and the BLOCKED GWTs always come from the `task` lines):
 - `run ended at {sha}, commit due:` and `HEAD` still at `{sha}` → the run ended before its
-  commit landed: run SKILL.md Phase 4.2's commit steps, then notify.
+  commit landed. Re-measure every file `gwt-tests.md` lists first: a mismatch turns the state
+  into `requirements check failed — TT file modified after the check` and commits nothing;
+  otherwise run SKILL.md Phase 4.2's commit steps. Then notify.
 - Any other `run ended` line → the run is over. Change nothing; notify with the state, the
   report path, and the commit from `git log -1` when `HEAD` has moved, and stop. The ledger and
   `HEAD` decide this, never whether the tree is clean: a leftover file keeps a committed tree

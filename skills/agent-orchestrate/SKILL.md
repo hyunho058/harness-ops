@@ -315,8 +315,18 @@ cited below (§1–§5) are that file's.
 a detached `HEAD`, or outside a git repository → write the report, notify, and execute
 nothing.
 
-**Subagent check.** Right after the branch guard, and before Phase 3 runs anything — for
-a spec with no TT tasks too — confirm the runtime can spawn subagents:
+**Run identity, before anything is written.** Right after the branch guard, when
+`{specDir}/requirement-check.md` or `{specDir}/gwt-tests.md` exists, apply Phase 3.4
+step 5 now: its run-identity check, then its ledger states. A mismatch clears the files
+and the run starts fresh. A match decides where this invocation picks up — a `run
+ended` line lands a due commit or stops, a ledger without `phase3 complete` resumes
+Phase 3, and a later state goes straight to Phase 3.4 — and Phase 3's create steps
+(park step 2, TT-first step 2) are skipped for a file that already holds this run's
+record. Read in order otherwise, those create steps come first and overwrite the ledger
+that says where the run stands.
+
+**Subagent check.** Right after the run-identity check, and before Phase 3 runs
+anything — for a spec with no TT tasks too — confirm the runtime can spawn subagents:
 `capability:spawn-worker` for TT writers and implementation workers, and
 `capability:spawn-inline-checker` for the requirement checker, both defined in
 `../../references/runtime-tools.md` — the `Agent` tool in Claude Code, `define_subagent`
@@ -392,8 +402,9 @@ today. Re-dispatch is not a recovery path for an escalation.
      tampered test. You are the orchestrator, not an implementation worker, so the
      "never modify a listed test file" rule does not bind you here.
 2. Run the remaining tasks with the chosen pattern — TT tasks first, as the next
-   subsection lays out. Before the first of them runs, create
-   `{specDir}/requirement-check.md` with its `spec: sha256 {hash}` line and one `task
+   subsection lays out. Before the first of them runs — unless the run-identity check
+   found this run's ledger — create `{specDir}/requirement-check.md` with its `spec:
+   sha256 {hash}` line and one `task
    {id} parked — {reason}` line per task step 1 parked (§2). From then on, write every
    task event to the ledger the moment you learn it, in Phase 3 and in re-dispatch
    rounds alike: `task {id} parked — {reason}` for a FENCED report and for each
@@ -440,10 +451,11 @@ today. Re-dispatch is not a recovery path for an escalation.
    with no TT tasks (from a specify run before TTs existed) skips this whole subsection
    and gets no `gwt-tests.md`.
 2. **You write `gwt-tests.md`** (§1); a TT returns text and never touches the file.
-   Create `{specDir}/gwt-tests.md` with the `spec: sha256 {hash}` line (§2 "Run
-   identity") and the R0 block — every R0 GWT `manual: goal-level`, written by you,
-   since R0 has no TT and so no return value — before the first TT is dispatched. Then,
-   once a batch returns and step 3 is done, write one block per TT, in three moves:
+   Unless the run-identity check found this run's copy, create `{specDir}/gwt-tests.md`
+   with the `spec: sha256 {hash}` line (§2 "Run identity") and the R0 block — every R0
+   GWT `manual: goal-level`, written by you, since R0 has no TT and so no return
+   value — before the first TT is dispatched. Then, once a batch returns and step 3 is
+   done, write one block per TT, in three moves:
    - **Check the return against the tree.** Every `test:` file appears under `files:`,
      and every listed file exists, starts with `tt{n}_`, and is a new untracked entry in
      the batch's snapshot diff. A return that fails either is a TT failure (step 5,
@@ -461,9 +473,12 @@ today. Re-dispatch is not a recovery path for an escalation.
      A hash a worker returns is a claim, not evidence.
    Writing per TT is what makes resume cheap: a TT that has a block is not re-run.
 3. **Snapshot check, after every TT batch.** Right before a batch is dispatched, take
-   `git status --porcelain -uall` and store every file it lists that exists with `git
-   hash-object -w {file}`, keeping each sha: `-w` writes the content into the object
-   store, so a file that already held earlier work can be put back without a commit.
+   `git status --porcelain -uall`, leaving out your own files — `requirement-check.md`
+   and its `.tmp`, `gwt-tests.md`, and the report, which you write while results come
+   in and which a repo that tracks `specs/` would show — and store every file it lists
+   that exists with `git hash-object -w {file}`, keeping each sha: `-w` writes the
+   content into the object store, so a file that already held earlier work can be put
+   back without a commit.
    `-uall` keeps a new test directory from collapsing into one `?? tests/` line that no
    basename would match. Right after the batch returns, take the snapshot again. A TT
    creates the new files its return lists and nothing else, so every other difference
@@ -512,8 +527,9 @@ judge again — the formats and prompts are §2, §4, and §5.
    (`capability:spawn-inline-checker`) with the §4 prompt and only the inputs it lists:
    the spec path; `gwt-tests.md`, or the line "no mapping — judge every GWT as read"
    when the spec has no TT tasks; the changed-file list — every path in `git status
-   --porcelain -uall`, tracked modifications and untracked files alike, since nothing in
-   this run is committed before Phase 4; never the workers' reports, which are claims,
+   --porcelain -uall` but your own files (TT-first step 3), tracked modifications and
+   untracked files alike, since nothing in this run is committed before Phase 4; never
+   the workers' reports, which are claims,
    and a worker that omits a file it created would hide it from the check; the
    out-of-scope GWTs — those whose requirements only parked tasks fulfill, the same list
    Phase 3.5 receives; and the §4 prompt itself, whose numbered procedure is the
@@ -574,6 +590,10 @@ judge again — the formats and prompts are §2, §4, and §5.
    re-run the full check over every in-scope GWT, never only the previously unmet ones:
    a regression the round introduced must count.
 4. **Exit conditions**, evaluated in this order after every check, round 0 included:
+   - no in-scope GWT left — a FENCED report mid-round parked every task that fulfills
+     one → end with `skipped — all tasks parked`, as park step 4 does; "zero unmet"
+     over an empty set would otherwise send a run that built nothing in scope to
+     Phase 3.5 and a `passed` state;
    - unmet = 0 → Phase 3.5;
    - targets = 0 (every remaining unmet GWT is BLOCKED or all-parked) → end with
      `requirements unmet after N rounds`;
@@ -597,7 +617,9 @@ judge again — the formats and prompts are §2, §4, and §5.
    ledger, the line right under the `#` heading is `spec: sha256 {hash of spec.md}`,
    measured by you when you create the file (§2 "Run identity", the counterpart of
    loop's `contract_ref`); compare that line, never the heading. At the start of every
-   run, and on resume after compaction, recompute it before reading either file. A
+   run — right after the branch guard, before Phase 3 writes anything ("Run identity,
+   before anything is written") — and on resume after compaction, recompute it before
+   reading either file. A
    mismatch means the files are an earlier run's on a different spec: remove the test
    files the stale `gwt-tests.md` lists that are still untracked, delete both files,
    and start Phase 3 from the beginning. A listed file that is tracked was committed by
@@ -608,7 +630,11 @@ judge again — the formats and prompts are §2, §4, and §5.
    decides what happens next, the same way for a new invocation and for a resume after
    compaction:
    - `run ended at {sha}, commit due:` and `HEAD` still at `{sha}` → the run ended
-     before its commit landed: run Phase 4.2's commit steps, then notify;
+     before its commit landed. Re-measure every file `gwt-tests.md` lists first, as
+     Phase 4.2 does — a hook or a person may have changed one since. A mismatch
+     rewrites the line as `run ended at {sha}: requirements check failed — TT file
+     modified after the check: {files}`, updates the report to that state, and commits
+     nothing; with every hash matching, run Phase 4.2's commit steps. Then notify;
    - any other `run ended` line → the run is over. Change nothing: notify that this
      spec's run already ended in that state, with the report path, the commit from `git
      log -1` when `HEAD` has moved, and how to run again (edit the spec, or remove both
@@ -673,7 +699,10 @@ A loop escalation (an autonomy boundary, or no progress) ends the gate with
 
 **Phase 4 — report, commit, notify.** After the handoff, agent-orchestrate is the only
 writer of the report; specify writes it only at its own stops, before handing off.
-1. Write the Phase 4 report to `{specDir}/unattended-report.md`, and add: the parked
+1. Settle the Verification state first: run step 2's green check, the hash re-measure
+   included, before writing anything, so the report is written with the final state
+   and its Result and next step match whether the run commits. Then write the Phase 4
+   report to `{specDir}/unattended-report.md`, and add: the parked
    tasks with their reasons, the spec's `Status: assumed` decisions, the Spec Review
    verdict, the branch, and the next step for the person — for any run that did not
    commit, that step says how to run again: a re-run on an edited spec starts over on
