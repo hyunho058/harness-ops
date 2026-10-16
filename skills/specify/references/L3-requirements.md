@@ -132,6 +132,18 @@ Append/replace the Requirements section in spec.md:
 ...
 ```
 
+**Unattended runs only** (see specify `SKILL.md` › `## Unattended Mode`): in this mode
+the GWTs are also the contract for the acceptance-test tasks L4 emits, so two more things
+are fixed when writing them. For a sub-requirement that describes code behavior, its When
+names the boundary the behavior goes through — a route, a CLI command, a public function
+or module, or an event (the examples above, `POST /api/projects` and `GET /orders/99`,
+already have this shape). A sub-requirement with no boundary to name (a UI flow, an
+external integration) gets ` (manual)` appended to the end of its heading, e.g.
+`#### R3.2: Preview refreshes (manual)`; the heading is the one fixed place, and the test
+task and the requirement check both read it there. Each requirement heading ends with the
+decision ids it derives from — `### Rn: {title} — Dx, Dy` — which is the source of the L2
+ids the test tasks copy; they never choose ids themselves. Interactive runs are unchanged.
+
 ### Coverage checks (agent self-check before approval)
 - Every decision has at least one requirement tracing back to it
 - Sub-requirements together cover the full behavior of the parent
