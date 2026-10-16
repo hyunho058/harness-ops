@@ -191,6 +191,16 @@ AskUserQuestion(
 - **Revise requirements (L3)** / **Revise tasks (L4)** → loop back to the named layer.
 - **Abort** → stop.
 
+**Handoff opt-out (additive, opt-in — see specify `SKILL.md` › `## Handoff Mode`):**
+if invoked with `handoff: none`, present the first option as
+`{ label: "Approve", description: "Record approval and return to the caller" }`
+instead of "Execute". On **Approve**, write `Approved by: user` and `Approved at: {date}`
+to the Meta section exactly as Execute does, then **stop — do NOT run the Handoff to
+Execution below**; return `{specDir}/spec.md` to the caller. The other three options, the
+L4 gate, and every check above are unchanged, and the human still approves here — only the
+handoff is removed. A bare invocation with no marker still shows "Execute" and still hands
+off.
+
 **Batch-mode bypass (additive, opt-in — see specify `SKILL.md` › `## Batch Mode`):**
 if invoked with `mode: batch` AND the feature's partition-manifest entry carries
 `pre-approved-batch: yes`, SKIP this final `AskUserQuestion`. The L4 gate / coverage
@@ -200,6 +210,10 @@ is the written `spec.md` ONLY: it does **NOT** trigger the Handoff to Execution 
 marker is unchanged and still hands off on Execute.
 
 ### Handoff to Execution (on Execute)
+
+**Skipped entirely** when the invocation carried `handoff: none` or `mode: batch` — in
+both cases the caller owns execution and specify returns the spec path instead. Everything
+below applies only to a bare invocation approved via "Execute".
 
 The spec is the *what* and the *order*; agent-orchestrate is the *how*. The Tasks
 DAG already encodes the signals orchestrate needs to pick a pattern — step count,

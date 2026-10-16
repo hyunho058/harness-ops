@@ -38,8 +38,15 @@ check-reports/
 tmp/
 temp/
 
-# Specs (local planning documents)
-specs/
+# Specs — TRACKED. A spec is the durable design record for a feature, so it must
+# survive outside the worktree that produced it (another machine, CI, a reviewer).
+# Only the transient run-state written *inside* a spec directory stays ignored:
+#   - progress.md: loop's own words are "deleted on clean EXIT, never auto-committed,
+#     safe to .gitignore" (skills/loop/SKILL.md:439)
+#   - dot-prefixed .tmp files: decompose's atomic-rename staging
+#     (skills/decompose/SKILL.md:181, 350)
+specs/**/progress.md
+specs/**/.*.tmp
 
 # Local workspace / agent working files (incl. timestamped backups)
 _workspace*/

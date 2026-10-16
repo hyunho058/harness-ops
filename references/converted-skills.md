@@ -32,11 +32,13 @@ makes the blocking hook deny every intermediate save of the rewrite.
 | check-harness | spawn-named-checker |
 | worktree | run-command |
 | context-audit | - |
+| crew | run-command |
+| expert | list-agents |
 
 Listing `check-harness` also brings `agents/*.md` into lint scope, because its
 `spawn-named-checker` procedure feeds those bodies to the runtime as prompt text.
 
-## Repo facts this work established (recorded here because `specs/` is gitignored)
+## Repo facts this work established
 
 - **`.gemini/skills/` is a symlink farm, not a copy.** Each entry symlinks into `skills/`. It was
   previously believed to be a frozen duplicate of 7 skills; it is not. Two links
