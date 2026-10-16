@@ -9,20 +9,11 @@ receive the prompts below and return text.
 contains `(tests)`). Every other task, including `[infra]`, is an implementation task. Signal
 exclusion, TT-first execution, park non-propagation, and re-dispatch targeting all use this key.
 
-**File cleanup around TTs.** A TT creates the new `tt{n}_` files its return lists and nothing
-else, and a TT batch runs with no other worker in flight. The orchestrator takes `git status
---porcelain -uall` right before and right after each batch, and stores every file the first
-snapshot lists with `git hash-object -w`; `-uall` keeps a new test directory from collapsing
-into one `?? tests/` line that would never match a basename. Every other difference is a rule
-break and is undone: a tracked file that went to ` M` or ` D` is restored with `git checkout
---`, a file listed before the batch is restored from its stored blob, and a new file no return
-lists — a `conftest.py`, a fixture directory, an `__init__.py`, a `__pycache__/` entry — is
-removed; each is recorded in the ledger and the report. A TT whose return fails its check, or
-that reported FENCED, also loses the new files it listed. On resume there is no "before"
-snapshot, so before re-running a TT that has no block, every untracked (`??`) file whose
-basename starts with `tt{n}_` is treated as that TT's and removed. Before a TTn re-dispatch,
-remove the files its block lists instead — the block is the record for a TT that finished.
-SKILL.md TT-first steps 3, 5, and 6 give the full procedure.
+**Where the procedures live.** This file holds formats and prompt templates only. What the
+orchestrator *does* — the TT snapshot check and its cleanup, the HEAD guard, re-dispatch
+targeting, the recheck after the gate, run identity, and the resume rules — is stated once, in
+SKILL.md `## Unattended Mode`, and is not repeated here: two hand-kept copies of that control
+flow drift apart.
 
 ## 1. `gwt-tests.md` — GWT to test mapping
 
@@ -33,16 +24,10 @@ appends one block each time a TT finishes — so on resume a TT that already has
 re-run, and one without a block is.
 
 Hashes are **measured by the orchestrator** with `shasum -a 256` on each file in the TT's
-returned list, at the moment the block is written and again after a TTn re-dispatch (the old
-block is replaced). A TT never returns hashes: a 64-character hex string from an LLM worker is
-a claim, not evidence ("A claim in the args is not evidence; read the file" — SKILL.md,
-Unattended Mode). Two steps come first. The return is checked against the tree: every `test:`
-file is under `files:`, and every listed file is a new `tt{n}_` file the batch wrote — a return
-that fails is a TT failure. A new file the return leaves out has already been removed by the
-snapshot check, so no test file stays in the tree without a recorded hash. Then the project's
-formatter, with its lint autofix, runs on the listed files only. Formatters are idempotent, so
-a later whole-tree format run leaves the files byte-identical, and the hash keeps meaning "the
-tests the checker judged".
+returned list, after the return is checked against the tree and the files are formatted
+(SKILL.md TT-first step 2); a TT never returns hashes. Next to each hash goes the blob id from
+`git hash-object -w`, which stores the file's content in the object store: the known-good copy
+a changed or deleted listed file is restored from.
 
 ```markdown
 # gwt-tests — {spec name}
@@ -58,7 +43,7 @@ spec: sha256 {64 hex of spec.md}
 - R2.2: test: tests/tt2_projects_api_test.py::test_list_empty_at_start
 - R2.3: manual: no spec-named boundary
 - files:
-  - tests/tt2_projects_api_test.py  sha256: {64 hex}
+  - tests/tt2_projects_api_test.py  sha256: {64 hex}  blob: {40 hex}
 
 ## TT3 — R3 — L2: D5
 - run: none
@@ -68,7 +53,7 @@ spec: sha256 {64 hex of spec.md}
 
 Each block: the TT id, its Rn, the L2 ids the TT copied from the `### Rn` heading; one `run:`
 line (`none` when every GWT is manual); one line per sub-requirement, `test: {file}::{case}`
-or `manual: {reason}`; the file list with one hash per file. Statuses only the orchestrator
+or `manual: {reason}`; the file list with one hash and one blob id per file. Statuses only the orchestrator
 writes: `manual: goal-level` (R0 has no TT, so no return value), `manual: TT failed — {reason}`
 and `manual: TT fenced — {reason}` (the TT errored, timed out, or reported FENCED — a block
 with no run line and no files; Rn's implementation tasks still run), and `manual: parked`
@@ -78,41 +63,35 @@ scope — a removed file left in the list would fail SKILL.md Phase 4.2's hash r
 
 ## 2. `requirement-check.md` — round ledger
 
-Path: `{specDir}/requirement-check.md`. Six kinds of entry, all written by the orchestrator,
-each by **atomic write**: write the whole new content to `{specDir}/requirement-check.md.tmp`,
-then rename over the target. The file is the resume state for the check loop (the counterpart
-of loop's `progress.md`). It is never committed: `specs/` is usually gitignored, and where it
-is not, Phase 4.2's scope check leaves the file out. The TT snapshot check and the checker's
-changed-file list leave it out too, along with `gwt-tests.md` and the report.
+Path: `{specDir}/requirement-check.md`. Every entry is written by the orchestrator by **atomic
+write**: the whole new content to `{specDir}/requirement-check.md.tmp`, then rename over the
+target. The file is the resume state for the run (the counterpart of loop's `progress.md`). It
+is never committed: `specs/` is usually gitignored, and where it is not, Phase 4.2's scope check
+leaves the file out. The TT snapshot check and the checker's changed-file list leave it out too,
+along with `gwt-tests.md` and the report.
 
-1. `spec: sha256 {hash of spec.md}` — the line right under the `#` heading, written with it
-   when Phase 3 starts executing (after the park step); the two lines are what create the
-   file. The hash is the run identity (below).
-2. Task events, each written the moment it is known, in Phase 3 and in rounds alike:
-   `task {id} parked — {reason}` (the park step's tasks right after the `spec:` line, then
-   every FENCED report and each dependent it parks); `task {id} blocked {GWT} — {reason}`
-   (every `BLOCKED:` line a worker returns); `batch {TT ids} reverted {file}` (the TT
-   snapshot check); and `task {id} done`, one per implementation task as it
-   returns, in Patterns A–C during Phase 3 only — in Pattern D loop owns the scope and its
-   `progress.md` is the record, and rounds need none because the `dispatched` line covers
-   them. `gwt-tests.md` is the TT record and these lines are everything else: a resume re-runs
-   only the tasks with neither a `done` nor a `parked` line, and rebuilds the parked set and
-   the BLOCKED GWTs from them, never from memory.
-3. `phase3 complete` — written the moment Phase 3 execution ends.
-4. `round N dispatched: {tasks}` — written **just before** the round's workers are spawned,
-   never after. Without it, a compaction between dispatch and recheck restores N to the
-   previous value and the same task is sent a third time.
-5. The round's verdict table — written at round end, after the full recheck. The initial
-   check (no dispatch) is round 0.
-6. `run ended at {sha}: {Verification state}` — written once the state is final, before any
-   commit command (SKILL.md Phase 4.2), with `git rev-parse HEAD` as `{sha}`; a green run
-   writes `run ended at {sha}, commit due: {state}`. It marks the run as over: a later
-   invocation on the same spec stops, except to land a due commit that `HEAD` shows never
-   happened.
+Entries, in the order they appear (SKILL.md says when each is written and what each means on
+resume — Phase 3 park step 2, the HEAD guard, Phase 3.4 step 5, Phase 3.5, Phase 4.2):
+
+1. `spec: sha256 {hash of spec.md}` — the line right under the `#` heading: the run identity.
+2. `head: {sha} on {branch}` — `HEAD` and the branch when the file is created, before Phase 3
+   runs any task; the HEAD guard compares against it.
+3. Task events: `task {id} parked — {reason}`; `task {id} blocked {GWT} — {reason}`; `task {id}
+   done` (Patterns A–C, Phase 3 only); `task TT{n} restored {file}` (a `modified` verdict, put
+   back from its blob); `batch {TT ids} reverted {file}` (`index` for the index).
+4. `phase3 complete`.
+5. `round N dispatched: {tasks}` — written **just before** the round's workers are spawned.
+6. `## round N` — the round's verdict table, written after the full check. The initial check
+   (no dispatch) is round 0.
+7. `gate passed: {state}`, then `gate restored {file}` lines, then the `## gate recheck` table
+   — Phase 3.5's recheck after the gate.
+8. `run ended at {sha}: {Verification state}`, or `run ended at {sha}, commit due: {state}` on
+   a green run — the last entry.
 
 ```markdown
 # requirement-check — {spec name}
 spec: sha256 {64 hex of spec.md}
+head: {40 hex} on feat/projects-api
 
 task T5 parked — Fenced: auth
 task T1 done
@@ -146,58 +125,14 @@ The footer lines carry the stop-condition inputs: the unmet total (compared with
 round over the same GWT set — a GWT that left scope between rounds is dropped from both
 counts), the tasks the round re-dispatched, and every `BLOCKED` line workers returned. Round 1
 above targets only `T3`: R2.3's code is `missing` on `read` grounds, and TT2 becomes a target
-only on `does-not-exercise`, `over-specifies`, or `modified` (SKILL.md Phase 3.4 step 3). After
-round 1 the only unmet GWT is BLOCKED, so there is nothing left to target and the run ends.
-R4.1 is out of scope because T5, the only task that fulfills R4, is parked.
+only on `does-not-exercise`, `wrong-expectation`, or `over-specifies`. After round 1 the only
+unmet GWT is BLOCKED, so there is nothing left to target and the run ends. R4.1 is out of scope
+because T5, the only task that fulfills R4, is parked. A `## gate recheck` table has the same
+columns and footer, with `dispatched this round: (none)`.
 
-**Run identity.** In both files the line right under the `#` heading is `spec: sha256 {hash}`:
-the `shasum -a 256` of `spec.md`, measured by the orchestrator when it creates the file (the
-counterpart of loop's `contract_ref`). Compare that line, never the heading.
-Whenever either file is read — at the start of a run or on resume — recompute the hash first. A
-mismatch means the files belong to an earlier run on a different spec, not to this one: remove
-the listed test files that are still untracked, delete both files, and start Phase 3 from the
-beginning. A listed file that is tracked was committed by an earlier green run; it is an accepted
-test, so it stays and the report names it — deleting it would put the deletion into this run's
-commit. Without the hash line a re-invocation on an edited spec would read the old ledger as a
-resume, skip Phase 3, and end again with the old verdict. With matching hashes the files are this
-run's, and the resume rules below apply. A ledger that holds a `run ended` line belongs to a
-finished run, so a new invocation on the unchanged spec stops at once and says so, landing first
-a due commit that never happened; to start over without editing the spec, remove the two files.
-
-**Resume rules** (on a new invocation and after compaction alike, once the run-identity
-check passes — it runs right after the branch guard, before Phase 3 writes anything; the
-parked set and the BLOCKED GWTs always come from the `task` lines):
-- `run ended at {sha}, commit due:` and `HEAD` still at `{sha}` → the run ended before its
-  commit landed. Re-measure every file `gwt-tests.md` lists first: a mismatch turns the state
-  into `requirements check failed — TT file modified after the check` and commits nothing;
-  otherwise run SKILL.md Phase 4.2's commit steps. Then notify.
-- Any other `run ended` line → the run is over. Change nothing; notify with the state, the
-  report path, and the commit from `git log -1` when `HEAD` has moved, and stop. The ledger and
-  `HEAD` decide this, never whether the tree is clean: a leftover file keeps a committed tree
-  dirty.
-- No file, or no `phase3 complete` line → Phase 3 is still running. Resume Phase 3 as before
-  (re-run the TTs with neither a `gwt-tests.md` block nor a `parked` line, then the
-  implementation tasks with neither a `done` nor a `parked` line; after Pattern D, re-invoke
-  loop, which resumes from its own `progress.md`) and run no check.
-- `phase3 complete` and no round entry after it → round 0: run a full recheck.
-- The last round entry is a `round N dispatched` line with no `## round N` table after it →
-  round N was cut off, and which of its workers ran is unknown. Run it again from the start:
-  recompute its targets from the last table and the `task` lines as they now stand, rewrite
-  the `dispatched` line with them, and dispatch them all to new workers — a TT target is
-  rewritten whether or not its block was already replaced, after its listed files and every
-  untracked `tt{n}_` file are removed. Then run the full recheck as the end of round N. A check
-  counted as the end of a round whose workers never ran would let the non-decrease exit end
-  the run with rounds still allowed.
-- The last round entry is a `## round N` table (round 0's included) → that round's check already
-  ran on this tree. Do **not** recheck: evaluate the exit conditions from the table — its unmet
-  total against the previous table's — and either write `round N+1 dispatched` and dispatch,
-  or end. A second check here would compare the tree with itself, find no decrease, and end
-  the run while rounds were still allowed.
-- Never resume a worker: a cut-off worker's partial edits stay in the tree, and the new worker
-  starts from them.
-
-Round entries are the `dispatched` lines and the tables; `task` and `batch` lines between them
-do not change which rule applies.
+**Run identity.** In both files the line right under the `#` heading is `spec: sha256 {hash}`,
+measured with `shasum -a 256` when the file is created. Compare that line, never the heading.
+The check and the resume rules that follow it are SKILL.md Phase 3.4 step 5.
 
 ## 3. TT worker prompt
 
@@ -257,8 +192,8 @@ files:
 (or "files: none")
 ```
 
-On a TTn re-dispatch (reason code `does-not-exercise`, `over-specifies`, or `modified`), the
-orchestrator has already removed the files the old block listed; it sends the same prompt with
+On a TTn re-dispatch (reason code `does-not-exercise`, `wrong-expectation`, or
+`over-specifies`), the orchestrator has already removed the files the old block listed; it sends the same prompt with
 the checker's lines for that Rn, from the last round table, appended under "Previous attempt —
 the checker found:", so the tests are rewritten from the spec rather than patched.
 
@@ -298,18 +233,23 @@ For every sub-requirement in the spec, produce exactly one line:
    with the recorded hash; a file that no longer exists is a mismatch. A mismatch makes
    every GWT that file covers `unmet` with
    grounds `test` and code `modified`; the `{grounds}` field is the file and both hashes.
-   Otherwise read the test and run the recorded command. Three criteria, checked in this
+   Otherwise read the test and run the recorded command. Four criteria, checked in this
    order, each naming the code an `unmet` verdict gets:
    a. it calls the When's trigger through the boundary the When names (route, command,
       public function, event) — missing → `does-not-exercise`;
    b. it asserts the Then's observable outcome — missing → `does-not-exercise`;
-   c. its assertions stay within the Then plus the L2 decisions the mapping lists for
+   c. every value it expects is the one the Then or the listed decisions give (a status
+      code, a field value, an error string) — judged against the spec text alone, never
+      against what the code returns; an expectation the spec contradicts →
+      `wrong-expectation`;
+   d. its assertions stay within the Then plus the L2 decisions the mapping lists for
       that requirement — anything beyond → `over-specifies`. Confirm those ids appear
       in the `### Rn` heading; an id that does not is not part of the ceiling.
-   A test that meets all three: passed → `met` with code `ok`, failed → `unmet` with code
+   A test that meets all four: passed → `met` with code `ok`, failed → `unmet` with code
    `test-fails`. The `{grounds}` field is `{file}::{case} passed`, or `{file}::{case}
-   failed — {the failing assertion, one line}`; for `does-not-exercise` and
-   `over-specifies` it names what is missing or what goes beyond the ceiling.
+   failed — {the failing assertion, one line}`; for `does-not-exercise`,
+   `wrong-expectation`, and `over-specifies` it names what is missing, the expected value
+   next to the one the spec gives, or what goes beyond the ceiling.
 3. The mapping gives `manual: ...`, or has no entry for the id → read the changed files
    (and what they call) and judge `met` or `unmet` with `grounds: read`; the grounds are
    `file:line` references. Behaviour not present → `missing`. A missing entry is not an
@@ -319,8 +259,9 @@ Return one line per sub-requirement, in spec order, and no other lines:
 {id}: met | unmet — grounds: test|read — {code} — {grounds}
 {id}: out-of-scope
 `{code}` is exactly one of: ok | missing | test-fails | does-not-exercise |
-over-specifies | modified. `met` is always `ok`, and `ok` always `met`; `test-fails`,
-`does-not-exercise`, `over-specifies`, and `modified` go with `grounds: test`; `missing`
+wrong-expectation | over-specifies | modified. `met` is always `ok`, and `ok` always `met`;
+`test-fails`, `does-not-exercise`, `wrong-expectation`, `over-specifies`, and `modified` go
+with `grounds: test`; `missing`
 goes with `grounds: read`. Every line carries all four fields,
 `{grounds}` included, with the separators exactly as shown; a line with a field missing
 is rejected. Full example of a `modified` line:
@@ -330,8 +271,9 @@ R2.1: unmet — grounds: test — modified — tests/tt2_projects_api_test.py re
 The orchestrator's validation reads only lines of those two shapes (anything else is ignored),
 checks each against the in-scope set, the mapping, and the verdict–code pairing as SKILL.md
 Phase 3.4 step 2 lays out, and matches the code token, never the prose: `does-not-exercise |
-over-specifies | modified` make TTn the first re-dispatch target of the round, before Rn's
-implementation tasks.
+wrong-expectation | over-specifies` make TTn the first re-dispatch target of the round, before
+Rn's implementation tasks; `modified` restores the listed files from their blobs and targets
+only the implementation tasks (SKILL.md Phase 3.4 step 3).
 
 ## 5. Re-dispatch worker prompt (common implementation-worker prompt)
 
