@@ -229,10 +229,12 @@ Inputs:
 
 For every sub-requirement in the spec, produce exactly one line:
 1. Its id is in the out-of-scope list → `{id}: out-of-scope`. Do not judge it.
-2. The mapping gives `test: {file}::{case}` → first run `shasum -a 256 {file}` and compare
-   with the recorded hash; a file that no longer exists is a mismatch. A mismatch makes
-   every GWT that file covers `unmet` with
-   grounds `test` and code `modified`; the `{grounds}` field is the file and both hashes.
+2. The mapping gives `test: {file}::{case}` → first run `shasum -a 256` on every file
+   that block's `files:` list names (`{file}` and any `tt{n}_` helper or fixture file)
+   and compare with its recorded hash; a file that no longer exists is a mismatch. A
+   mismatch on any file in the block makes every `test:` GWT in that block `unmet` with
+   grounds `test` and code `modified`; the `{grounds}` field is the mismatched file and
+   both hashes.
    Otherwise read the test and run the recorded command. Four criteria, checked in this
    order, each naming the code an `unmet` verdict gets:
    a. it calls the When's trigger through the boundary the When names (route, command,
