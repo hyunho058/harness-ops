@@ -24,7 +24,7 @@ prompt = '''
 > substitution applies to every other `../../` path in the body.
 >
 > **If no candidate validates, halt** — say `unresolved: harness root did not validate`. This
-> skill cites pinned, determinism-critical procedures (spawn-inline-checker spawn-worker),
+> skill cites pinned, determinism-critical procedures (invoke-skill spawn-inline-checker spawn-worker),
 > and the map is the only place they are defined. Guessing at one is the substitution the
 > procedure ids exist to prevent.
 
@@ -241,7 +241,8 @@ If the user opts out of verification this way, Phase 3.5 is skipped and the Phas
 1. Formulate the task as a loop request:
    - Clear goal statement
    - Any done-criteria / thresholds the user provided
-2. Invoke: Skill(skill="harness-ops:loop", args="{task description with context}")
+2. Invoke via `capability:invoke-skill`: Skill(skill="harness-ops:loop", args="{task description with context}")
+   — under agy, read ../loop/SKILL.md and follow it inline with the same args, verbatim
 3. The loop skill handles the rest:
    - Phase 0: gate contract (loop.md) proposal + user confirmation
    - Phase 1-3: Work → Verify (3 gates) → Fix, until gates pass or a boundary escalates
@@ -270,7 +271,9 @@ specify's L4 omits a final-verify task because "holistic verification is handled
 
 ### How to Run the Gate
 
-Invoke `Skill(skill="harness-ops:loop", args=...)`. The args MUST include:
+Invoke `Skill(skill="harness-ops:loop", args=...)` through `capability:invoke-skill`
+(`../../references/runtime-tools.md`). Under agy, which has no `Skill` tool, read
+`../loop/SKILL.md` and follow it inline with the same args, verbatim. The args MUST include:
 
 1. The spec path (or the done-criteria)
 2. Context of what was just executed — which tasks, which files
@@ -284,7 +287,7 @@ In Unattended Mode, add the marker, the parked scope, and the `gwt-tests.md` ite
 ### Failure Handling
 
 - **User rejects the contract at loop's Phase 0** → record `aborted — contract rejected at Phase 0`. Verification is honestly recorded as not performed — never as passed.
-- **The Skill invocation itself errors** → relay the error in the report and suggest running `/harness-ops:loop` manually with the spec path.
+- **The Skill invocation itself errors**, or under agy `../loop/SKILL.md` can't be read → relay the error in the report and suggest running `/harness-ops:loop` manually with the spec path. A missing `Skill` tool alone is not this case — use the agy path above.
 
 ---
 
@@ -892,7 +895,7 @@ writer of the report; specify writes it only at its own stops, before handing of
 ## Rules
 
 1. **Always ask before executing** — never skip Phase 2 confirmation. The one exception is Unattended Mode, which only a spec from an unattended specify run can enter
-2. **Ralph Loop is a skill call, not a reimplementation** — use `Skill(skill="harness-ops:loop")`
+2. **Ralph Loop is a skill call, not a reimplementation** — use `Skill(skill="harness-ops:loop")` (`capability:invoke-skill`; under agy, load `../loop/SKILL.md` inline)
 3. **Parallel agents in one message** — don't spawn sequentially
 4. **Match pattern to situation** — don't force a pattern; if the task is trivial, sequential is fine
 5. **Pass context forward** — each step/agent needs enough context to work independently

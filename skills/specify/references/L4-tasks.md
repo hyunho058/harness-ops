@@ -307,7 +307,13 @@ both `- **Mode**: unattended` and `- **Approved by**: unattended (request marker
 the marker cannot turn an interactive spec, or one from a stopped run, into an
 unattended run.
 
-If the user is on `main` or the surface otherwise lacks the `Skill` tool, fall back
-to telling them to run `/harness-ops:agent-orchestrate` with the spec path. In an
-unattended run nobody is there to read that: write the exact command, including
-`mode: unattended`, into `{specDir}/unattended-report.md` and send the notification.
+**Without a `Skill` tool (agy).** Make the same handoff through
+`capability:invoke-skill` (`../../references/runtime-tools.md`): read
+`../agent-orchestrate/SKILL.md` and follow it in this session, with the args above,
+verbatim and including `mode: unattended` in an unattended run, as its invocation.
+Don't print the command and stop. In an unattended run nobody is there to run it.
+
+Fall back to telling the user to run `/harness-ops:agent-orchestrate` with the spec
+path only when the user is on `main`, or when that file can't be read. In an
+unattended run, write the exact command, including `mode: unattended`, into
+`{specDir}/unattended-report.md` and send the notification.
