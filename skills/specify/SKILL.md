@@ -100,7 +100,9 @@ AskUserQuestion(
 
 At the **final gate (L4)** the "Approve" option is "Execute". On Execute, specify
 records approval and then hands the approved plan off to execution via
-`Skill(skill="harness-ops:agent-orchestrate")` — see `references/L4-tasks.md`.
+`Skill(skill="harness-ops:agent-orchestrate")` — see `references/L4-tasks.md`. A runtime
+with no `Skill` tool (agy) loads `../agent-orchestrate/SKILL.md` and follows it inline
+(`capability:invoke-skill`); it does not print the command and stop.
 specify never writes task code itself; it produces the plan and delegates the
 *how* to agent-orchestrate, which still confirms the execution pattern with the user.
 
