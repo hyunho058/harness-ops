@@ -165,8 +165,8 @@ Read spec.md and verify:
 After the gate passes, read `references/spec-review.md` and run it: a fresh-context
 reviewer checks the whole spec, specify fixes what it finds, and the result is recorded
 in `## Spec Review`. Batch mode (`mode: batch` with `pre-approved-batch: yes`) skips
-this step. In unattended mode a final NEEDS_FIX, or a review that can't run, stops the
-run here.
+this step. In unattended mode a final NEEDS_FIX (after the fix confirmation, when it
+runs), or a review that can't run, stops the run here.
 
 ### Plan Summary
 
@@ -252,7 +252,8 @@ if the user's invocation carries `mode: unattended`, print the Plan Summary and 
   transitively) is set aside → add the lines
   `- **Approved by**: unattended (request marker)` and `- **Approved at**: {date}` to
   `## Meta`, then use the **Unattended handoff** below.
-- **NEEDS_FIX** after the last re-review, a review that couldn't run, or no
+- **NEEDS_FIX** after the last re-review and the fix confirmation (`references/spec-review.md`
+  › Fix confirmation), a review that couldn't run, or no
   implementation task left to run → stop: write `{specDir}/unattended-report.md`, send
   the notification, and do not hand off. `Approved by` is never written on these paths.
   TTs depend only on `[infra]` tasks, so they survive the fenced walk; counted as work
