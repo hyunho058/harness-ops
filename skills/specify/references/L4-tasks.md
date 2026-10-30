@@ -103,6 +103,11 @@ Append the Tasks section to spec.md:
 - Acceptance criteria = sub-req behaviors from fulfills (no separate AC field — Worker reads requirements directly)
 - Build/lint/typecheck = Worker runs these automatically
 - Agent may consolidate: merge T1+T2 into one task that fulfills both R1 and R2
+- **Unattended runs only:** a task whose work falls in a fenced area (database schema,
+  a migration that can lose data, auth / permission / access control, payment, security)
+  or that needs an `L2 fenced:` gap gets `- **Fenced**: {area} — {why}`. Keep fenced work
+  in its own task rather than folding it into a larger one, so agent-orchestrate can park
+  only that task and its dependents (see specify `SKILL.md` › `## Unattended Mode`).
 
 ### External Dependencies
 
@@ -127,9 +132,17 @@ Read spec.md and verify:
 - No circular dependencies in task DAG
 - External dependencies section exists
 
+### Spec Review
+
+After the gate passes, read `references/spec-review.md` and run it: a fresh-context
+reviewer checks the whole spec, specify fixes what it finds, and the result is recorded
+in `## Spec Review`. Batch mode (`mode: batch` with `pre-approved-batch: yes`) skips
+this step. In unattended mode a final NEEDS_FIX, or a review that can't run, stops the
+run here.
+
 ### Plan Summary
 
-After gate passes, present the full plan:
+After the Spec Review, present the full plan:
 
 ```
 spec.md ready! {specDir}/spec.md
@@ -171,6 +184,10 @@ T4: {action} [vertical] — pending (depends: T2, T3)
 Post-work
 ────────────────────────────────────────
 {post_work items or "(none)"}
+
+Spec Review                        ← omit in batch mode
+────────────────────────────────────────
+{verdict} after {n} review(s) — open issues: {open issues or "(none)"}
 ```
 
 ### Final Approval
@@ -198,6 +215,17 @@ checks above still run and the derived plan is recorded, but batch mode's delive
 is the written `spec.md` ONLY: it does **NOT** trigger the Handoff to Execution below
 (the caller — decompose, then build-order — owns execution). A bare invocation with no
 marker is unchanged and still hands off on Execute.
+
+**Unattended bypass (additive, opt-in — see specify `SKILL.md` › `## Unattended Mode`):**
+if the user's invocation carries `mode: unattended`, print the Plan Summary and SKIP this
+`AskUserQuestion`. The Spec Review stands in for the person:
+- **PASS**, and something is left to run once every fenced task and every task that
+  depends on one (directly or transitively) is set aside → add the lines
+  `- **Approved by**: unattended (request marker)` and `- **Approved at**: {date}` to
+  `## Meta`, then use the **Unattended handoff** below.
+- **NEEDS_FIX** after the last re-review, a review that couldn't run, or nothing left
+  to run → stop: write `{specDir}/unattended-report.md`, send the notification, and do
+  not hand off. `Approved by` is never written on these paths.
 
 ### Handoff to Execution (on Execute)
 
@@ -228,5 +256,23 @@ so the user still approves *how* the work executes — specify does not bypass t
 gate. Do not write task code here; the handoff owns execution — including the
 post-execution verification gate, which is why L4 emits no final-verify task.
 
+**Unattended handoff.** In an unattended run, replace "and confirm with me before
+running" in the args above with the marker and its instructions:
+
+```
+        ... a focused task needing iterative refinement to a gate -> Loop).
+        mode: unattended — this spec came from an unattended specify run. Follow
+        your Unattended Mode section: no prompts,
+        park every task marked Fenced and the tasks that depend on it, and write
+        {specDir}/unattended-report.md when you finish. After execution completes, ...
+```
+
+agent-orchestrate reads the spec's `## Meta` itself and accepts the marker only when
+both `- **Mode**: unattended` and `- **Approved by**: unattended (request marker)` are there, so
+the marker cannot turn an interactive spec, or one from a stopped run, into an
+unattended run.
+
 If the user is on `main` or the surface otherwise lacks the `Skill` tool, fall back
-to telling them to run `/harness-ops:agent-orchestrate` with the spec path.
+to telling them to run `/harness-ops:agent-orchestrate` with the spec path. In an
+unattended run nobody is there to read that: write the exact command, including
+`mode: unattended`, into `{specDir}/unattended-report.md` and send the notification.
