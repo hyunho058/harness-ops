@@ -413,8 +413,16 @@ Find a session whose path matches the worktree, then **ask via `capability:ask-u
 be running a live agent session:
 ```bash
 SESSION=$(tmux list-sessions -F '#{session_name}	#{session_path}' 2>/dev/null \
-          | awk -F'\t' -v p="<abs-path>" '$2==p{print $1}')
+          | while IFS='	' read -r name path; do
+              [ "$path" = "<abs-path>" ] && printf '%s\n' "$name"
+            done)
 ```
+> **No dollar-digit anywhere in this file — not even in prose.** The skill loader replaces
+> every dollar sign followed by a digit with the matching invocation argument (counting from
+> zero) before the text is read. awk's "print field one" here once arrived as
+> `print terminal-fix-pty-env-sanitize` under `/worktree remove terminal-fix-pty-env-sanitize`.
+> The `read` loop names its fields instead, and reads the path **last** so a path containing
+> a tab still lands whole.
 - If a session is found, tell the user (note it may be running an agent) and confirm via
   `capability:ask-user`. On confirmation:
   ```bash
