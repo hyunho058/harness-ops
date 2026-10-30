@@ -72,7 +72,8 @@ ISSUES:
   (a fresh context again, never a continuation of the last one). If nothing could be
   changed — every remaining issue is one specify must not fix — record those issues as
   Open now and skip to "After the last review"; a re-review of an unchanged file
-  returns the same verdict. At most 2 re-reviews, so 3 reviews in total.
+  returns the same verdict. At most 2 re-reviews, so 3 reviews in total; an unattended
+  run may add one scoped fix confirmation after them (below).
 - Keep the verdict, issue list, and fixes in working notes until the loop ends. Do not
   write `## Spec Review` into spec.md between rounds: the next reviewer reads the whole
   file, and a previous verdict with "Fixed" entries would anchor it on re-checking
@@ -86,11 +87,49 @@ ISSUES:
   Requirements, since none were approved by a person. Mark a changed decision
   `Status: assumed`. Never resolve a fenced checkpoint (`L2 fenced:` in Known Gaps).
 
+**Fix confirmation (unattended only).** Fresh reviewers on a large spec rarely run out
+of new findings, so three full reviews often end on NEEDS_FIX with every finding already
+fixed but none of the fixes checked. When the third review returns NEEDS_FIX and specify
+applied at least one fix after it (and re-ran the gates that fix touched), spawn one
+more fresh reviewer, scoped to those fixes instead of the whole spec:
+
+```
+Agent(subagent_type="general-purpose", prompt="""
+A reviewer found the issues below in {specDir}/spec.md, and the author then edited the
+spec to fix them. You did not write it and have no other context about it.
+
+Read {specDir}/spec.md. Read repository files when a check needs them.
+Do not edit, create, or delete any file.
+
+Issues and the fix applied to each:
+{for each issue: [check] location — problem — what was changed}
+
+For each issue: is it resolved by what the spec now says? Then: does any of those
+changes contradict another part of the spec (a Decision, Requirement, GWT, task body,
+or Depends on), or name a file, function, or command that neither exists nor is created
+by a task? Do not review anything else, and do not report wording preferences.
+
+Return exactly this shape:
+VERDICT: PASS | NEEDS_FIX
+ISSUES:
+- [unresolved | introduced] {location} — {problem}
+(or "ISSUES: none")
+""")
+```
+
+It runs once and its result is final: specify does not edit after it. PASS → the
+spec counts as reviewed, with Open `(none)`. NEEDS_FIX → its issues are the Open list.
+It is skipped when the third review left nothing specify was allowed to fix. Interactive
+runs don't use it, because the Final Approval gate is where a person settles open issues.
+
 **After the last review:**
 - **Interactive** — list open issues in the Plan Summary; the Final Approval options
   already include "Revise requirements (L3)" and "Revise tasks (L4)".
-- **Unattended** — if the verdict is still NEEDS_FIX, stop before execution: do not hand
-  off. Write the report and notify (Unattended Mode › Stop conditions).
+- **Unattended** — if the last verdict (the fix confirmation's, when it ran) is still
+  NEEDS_FIX, stop before execution: do not hand off. Write the report and notify
+  (Unattended Mode › Stop conditions). A fix that changes a Decision is not, by itself,
+  a reason to stop or ask: unattended fixes may change Decisions (above), and a
+  fenced checkpoint is never changed by a fix at all.
 
 ### Record in spec.md
 
@@ -99,7 +138,7 @@ Written once, after the final verdict (never between rounds — see Fix loop).
 ```markdown
 ## Spec Review
 - **Verdict**: PASS | NEEDS_FIX
-- **Reviews**: {n}
+- **Reviews**: {n} (add `+ fix confirmation` when it ran; its verdict is the Verdict above)
 - **Fixed**:
   - [{check}] {location} — {what changed}
 - **Open**:
