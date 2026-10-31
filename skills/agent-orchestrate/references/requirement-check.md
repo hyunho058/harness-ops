@@ -153,9 +153,16 @@ It is normal for your tests to fail now.
 1. Read `### {Rn}` and its sub-requirements. The heading ends with `— Dx, Dy`: those are
    the L2 decisions this requirement comes from. Read them under `## Decisions`. Copy
    their ids verbatim into your return; do not add or drop any.
-2. Detect the test runner the way loop derives its Gate-1 commands: `package.json`
-   scripts, `Makefile`, `pyproject.toml`, CI config. If none defines a test command,
-   write no files and return every GWT as `manual: no test runner`.
+2. Detect the test runner. Everything you need is here; do not look for other skill
+   files.
+   a. A configured test command: `package.json` scripts, `Makefile`, `pyproject.toml`
+      or `setup.cfg`, CI config. Use it.
+   b. Otherwise, existing test files that a runner collects by default, with that runner
+      installed (`command -v`): `test_*.py` or `*_test.py` → `pytest`; `*_test.go` →
+      `go test ./...`; `*_test.rs` or a `tests/` dir in a Cargo crate → `cargo test`.
+      Build your `run:` line from that runner's default command.
+   c. If neither finds one, write no files and return every GWT as
+      `manual: no test runner`.
 3. For each sub-requirement:
    - Heading ends in `(manual)` → `manual: spec-marked`. No test.
    - Otherwise the When names the boundary the behaviour passes through: a route, a CLI
