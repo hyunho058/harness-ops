@@ -559,9 +559,11 @@ today. Re-dispatch is not a recovery path for an escalation.
    and removal for a new file. Restoring the worktree first would copy a staged edit
    back out of the index. Write each to the ledger as `batch {TT ids} reverted {file}`
    (`index` for the index) and list it in the report.
-4. **No test runner.** When nothing in `package.json` scripts, `Makefile`,
-   `pyproject.toml`, or CI config defines a test command, the TT writes no files and
-   returns every GWT as `manual: no test runner` (§3). Record the block as returned; the
+4. **No test runner.** The TT finds its runner with the detection rule in
+   `references/requirement-check.md` §3 step 2: a configured test command first, then
+   the default command of a runner whose existing tests show it in use (`test_*.py` →
+   `pytest`). Only when both find nothing does the TT write no files and return every
+   GWT as `manual: no test runner` (§3). Record the block as returned; the
    check then reads code for those GWTs, and the report's grounds ratio shows `read`
    100%, so the person sees how weak the evidence is.
 5. **TT failure or FENCED.** On an error, a timeout, a `FENCED:` report, or a return
@@ -865,9 +867,14 @@ writer of the report; specify writes it only at its own stops, before handing of
       rules.
    3. Confirm the scope: `git status --short` and compare the staged set with the
       files the spec's tasks name, the files `gwt-tests.md` lists, the deletions of
-      acceptance tests written for an earlier spec (Phase 3.4 step 5), and the report.
+      acceptance tests written for an earlier spec (Phase 3.4 step 5), the report, and
+      `{specDir}/spec.md`, `{specDir}/loop.md` and `{specDir}/progress.md` when the
+      repo's ignore rules let step 2 stage them.
       The second set is the acceptance tests: a TT task names no file, because a TT
-      picks its file names at run time. Unstage anything else — a stray scratch file, a debug
+      picks its file names at run time. Always unstage the two ledgers,
+      `{specDir}/gwt-tests.md` and `{specDir}/requirement-check.md`: they are this
+      run's resume state and are never committed (`references/requirement-check.md` §2).
+      Unstage anything else too — a stray scratch file, a debug
       script, a worker's temp output — with `git restore --staged` and list it in the
       report under "Left uncommitted". Nobody is watching this staging, so the check is
       the only review it gets.
