@@ -283,7 +283,7 @@ After execution completes (regardless of pattern), output a brief summary:
 | `aborted — contract rejected at Phase 0` | User rejected the loop contract — verification not performed |
 | `skipped — all tasks parked` | Unattended Mode only: every task was fenced or depended on one, so nothing ran |
 | `requirements unmet after N rounds` | Unattended Mode only: Phase 3.4 stopped with in-scope GWTs still unmet after N re-dispatch rounds — N may be 0 (nothing left to target) — and the gate did not run |
-| `requirements unmet after the gate: {GWT ids}` | Unattended Mode only: Phase 3.4 ended with every in-scope GWT met and the gate passed, but the recheck after the gate found these GWTs unmet — the gate's Auto-fix changed code the check had judged — so nothing was committed |
+| `requirements unmet after the gate: {GWT ids}` | Unattended Mode only: Phase 3.4 ended with every in-scope GWT met and the gate passed, but the recheck after the gate found these GWTs unmet — the gate's Auto-fix changed code the check had judged — so nothing was committed. A disputed `over-specifies` (Phase 3.5 › Recheck after the gate, step 3) is not unmet |
 | `requirements check failed — {reason}` | Unattended Mode only: the Phase 3.4 checker could not produce a valid verdict (an error, a timeout, or an invalid line twice over — or `no subagent capability`), so no GWT was judged and the gate did not run; or a test file `gwt-tests.md` lists changed after the check (`TT file modified after the check: {files}`), so the verdict no longer describes the tree and nothing was committed; or `HEAD` moved while the run was in progress (`HEAD moved during the run: {sha}..{sha}`), so a worker committed or switched branches and nothing was committed |
 
 When the state is `escalated`, `aborted`, `requirements unmet after N rounds`, `requirements unmet after the gate: {GWT ids}`, or `requirements check failed — {reason}`, the report must not claim success anywhere. The checkable proxy for that: the report has no `Commit:` line, its Verification is one of those states, and its Result line contains neither `passed` nor `green`.
@@ -771,6 +771,20 @@ gate passed, run the HEAD guard, write `gate passed: {state}` to the ledger, the
    commit. Any unmet → Verification `requirements unmet after the gate: {GWT ids}`,
    and nothing is committed. A checker failure after the retry → `requirements check
    failed — {reason}`.
+   **One exception: a disputed `over-specifies`.** Whether an assertion goes beyond the
+   ceiling is a judgment, and a fresh checker can read it more strictly than the one
+   before. A GWT counts as met here, not unmet, when all of these hold: Phase 3.4's last
+   check judged it `met`; the recheck's code is `over-specifies`; step 1 did not restore
+   its test file, so the test is byte-for-byte the one judged met; and its case passes
+   when you run its `run:` command yourself now. The test still exercises the When and
+   asserts the Then with the spec's values, and the extra assertion holds against the
+   code, so it hides nothing. A regression shows as `test-fails`, `missing` or
+   `modified`, and those still block. Only `over-specifies` is exempt:
+   `does-not-exercise` and `wrong-expectation` mean the GWT itself isn't shown, so they
+   block even after an earlier `met`. List each exempt GWT in the report under
+   "Recheck disputes" with the checker's grounds and the passing case, so the person can
+   remove the extra assertion. This step is re-evaluated from the `## gate recheck`
+   table and the tree on resume; the ledger gets no new entry for it.
 After Pattern D with no re-dispatch round there is no Phase 3.5 and so no recheck:
 Phase 3.4's check already ran after loop, the last thing that edited code.
 
@@ -807,7 +821,8 @@ writer of the report; specify writes it only at its own stops, before handing of
    which the report's grounds ratio shows; Phase 3.4 ended with every in-scope GWT met;
    the verification state is
    `passed (N iterations)` with the recheck after the gate finding every in-scope GWT
-   met — or, for a Pattern D run with no re-dispatch round,
+   met (a disputed `over-specifies` counts as met — Phase 3.5 step 3) — or, for a
+   Pattern D run with no re-dispatch round,
    `embedded in Loop pattern` with a Loop Report verdict of all gates passed; `HEAD`
    and the branch still match the ledger's `head:` line (HEAD guard); and every
    file `gwt-tests.md` lists still matches its recorded hash — re-measure each with
