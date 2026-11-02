@@ -316,9 +316,9 @@ approval — never the derivation, never a gate. A bare invocation is byte-uncha
 1. The L4 final-approval option reads **"Approve"** ("Record approval and return to the
    caller") instead of **"Execute"** ("Start implementation via agent-orchestrate").
 2. On approval, specify writes `Approved by:` / `Approved at:` to the spec's Meta section
-   as usual and then **stops**, returning `{specDir}/spec.md` to its caller. The
-   `Skill(skill="harness-ops:agent-orchestrate")` handoff in
-   `references/L4-tasks.md` › `### Handoff to Execution` is **not** invoked.
+   as usual and then **stops**, returning `{specDir}/spec.md` to its caller. Nothing in
+   `references/L4-tasks.md` › `### Handoff to Execution` runs, on any runtime:
+   agent-orchestrate is **not** invoked.
 
 **What does NOT change.** Every L0–L4 gate, every self-validation, the L2-reviewer, and
 the written spec are identical. `handoff: none` is **not** an approval bypass — the human
