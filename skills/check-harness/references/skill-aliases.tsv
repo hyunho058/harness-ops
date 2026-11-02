@@ -1,0 +1,36 @@
+# Skill-name alias table for check-harness (spec D3). The single source of
+# aliases: no other file in check-harness hard-codes these names.
+#
+# Columns are tab-separated. Lines starting with # and blank lines are ignored.
+#   prefix             owner rename, applied to the part before the first ":"
+#   rename             whole-key rename, applied after prefix; from and to are full keys
+#   builtin            bare names shipped with Claude Code (no SKILL.md on disk); to = -
+#   builtin-namespace  owners whose skills are all built-in; to = -
+# This list is static and lags new Claude Code releases; an unlisted built-in
+# shows as a ghost until a row is added here.
+kind	from	to
+prefix	harness	harness-ops
+prefix	harness-session	harness-ops
+rename	harness-ops:doc-drift	harness-ops:context-audit
+rename	harness-ops:deep-interview	harness-ops:requirements-interview
+rename	harness-ops:ralph	harness-ops:loop
+rename	doc-drift	harness-ops:context-audit
+rename	deep-interview	harness-ops:requirements-interview
+rename	ralph	harness-ops:loop
+builtin	loop	-
+builtin	schedule	-
+builtin	simplify	-
+builtin	code-review	-
+builtin	review	-
+builtin	security-review	-
+builtin	init	-
+builtin	run	-
+builtin	update-config	-
+builtin	keybindings-help	-
+builtin	fewer-permission-prompts	-
+builtin	claude-api	-
+builtin	claude-in-chrome	-
+builtin	workflow-authoring	-
+builtin	dataviz	-
+builtin	plugin-authoring	-
+builtin-namespace	anthropic-skills	-

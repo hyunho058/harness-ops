@@ -178,7 +178,7 @@ exactly the kind honest degradation is supposed to avoid.
 
 `file-only` is upgraded to `verified` the first time that expert is actually spawned and
 the call returns — under Claude Code the native spawn's own return is the evidence
-(`skills/check-harness/SKILL.md:176-178`).
+(`skills/check-harness/SKILL.md` › "Delegation assertion", step 2).
 
 Report the grade. Never report `verified` without having observed the name.
 

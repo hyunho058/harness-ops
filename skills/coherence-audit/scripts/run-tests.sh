@@ -21,6 +21,11 @@
 #   C. entry-digest.sh — stability, the `state:` / `pre-approved-batch:`
 #      EXCLUSION, detection of a changed declared-surface / accept-seed /
 #      depends_on, order- and whitespace-insensitivity, and its exit-2 paths.
+#   D. portability contract — the full-corpus lint sweep, root-resolution
+#      parity, and the PreToolUse guard probes.
+#   E. collected skill tests — every `skills/*/tests/*_test.sh` (sorted), each
+#      run with the repo root as cwd and counted as ONE case by its exit status.
+#      Name new tests `*_test.sh` in a skill's `tests/` directory to be picked up.
 #
 # EXIT
 #   0 if every case passes; 1 if any case fails (so a caller can gate on it).
@@ -553,6 +558,42 @@ Use the Grep tool to scan.')
         "before: $sum_before" "after:  $sum_after"
   fi
 fi
+
+# ===========================================================================
+# E. collected skill tests — skills/*/tests/*_test.sh
+# ===========================================================================
+#
+# One case per file, judged by its exit status. Each runs in a subshell with the
+# repo root as cwd (tests may rely on that) and stdin closed. Zero files is fine.
+# The glob expands sorted under LC_ALL=C; a non-match leaves the literal
+# pattern, which the -e check skips.
+
+section "E. collected skill tests"
+
+collected=0
+for test_file in "$REPO_ROOT"/skills/*/tests/*_test.sh; do
+  [ -e "$test_file" ] || continue
+  collected=$((collected + 1))
+  rel=${test_file#"$REPO_ROOT"/}
+  out="$TMP/collected-$collected.out"
+  if (cd "$REPO_ROOT" && bash "$test_file") </dev/null >"$out" 2>&1; then
+    ok "$rel"
+  else
+    rc=$?
+    if [ -s "$out" ]; then
+      set -- "exit $rc; last output lines:"
+      while IFS= read -r line; do
+        set -- "$@" "| $line"
+      done <<EOF_TAIL
+$(tail -n 5 "$out")
+EOF_TAIL
+    else
+      set -- "exit $rc; <no output>"
+    fi
+    bad "$rel" "$@"
+  fi
+done
+[ "$collected" -eq 0 ] && printf '  (no skills/*/tests/*_test.sh files found)\n'
 
 # ===========================================================================
 # summary

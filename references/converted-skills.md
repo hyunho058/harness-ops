@@ -29,7 +29,7 @@ makes the blocking hook deny every intermediate save of the rewrite.
 | skill | required-procedure-ids |
 |---|---|
 | coherence-audit | resolve-harness-root, run-glob-overlap, read-declared-surface-schema, spawn-inline-checker |
-| check-harness | spawn-named-checker |
+| check-harness | spawn-named-checker, resolve-harness-root, run-command |
 | worktree | run-command |
 | context-audit | - |
 | crew | run-command |

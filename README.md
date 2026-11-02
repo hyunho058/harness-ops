@@ -8,7 +8,7 @@ The art of designing environments where AI agents work well — 13 skills coveri
 
 | Skill | Description | Command |
 |-------|-------------|---------|
-| **check-harness** | Diagnose harness maturity via 6-axis / 24-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents. | `/harness-ops:check-harness` |
+| **check-harness** | Diagnose harness maturity via 6-axis / 26-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents; deterministic collection (inventory, session metrics, project signals) lives in tested scripts under `skills/check-harness/scripts/`. | `/harness-ops:check-harness` |
 | **scaffold** | Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context | `/harness-ops:scaffold` |
 | **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md). **Additive `mode: batch`** path (driven by `decompose`) skips only the human approval prompts — L1–L4 derivation and the per-spec L2-reviewer still run. A fresh-context **Spec Review** checks the finished spec before Execute. **Opt-in `mode: unattended`** runs specify → review → agent-orchestrate → loop with no prompts, on its own worktree branch (see [Unattended single task](#unattended-single-task)). | `/harness-ops:specify "goal"` |
 | **decompose** | One project goal → **N coherent, sibling-aware** `specs/<feature>/spec.md`. Proposes a *partition* (disjoint declared-surface globs + `depends_on` + shared decisions made once), concentrates judgment at **one** human gate (Approve/Revise/Abort), drives `specify` in `mode: batch` per feature, then runs `coherence-audit` on its own output (maker≠checker). Reuses specify — never reimplements it. | `/harness-ops:decompose "goal"` |
@@ -195,9 +195,22 @@ After linking, open any Gemini CLI session and type `/harness-ops` to see all 9 
 
 ---
 
+## Testing
+
+One command runs the whole suite, from the repo root:
+
+```bash
+make test
+```
+
+It runs `skills/coherence-audit/scripts/run-tests.sh` — the shared-script cases plus every collected `skills/*/tests/*_test.sh` file (one case per file, so a failing test file fails the run; check-harness's script tests live in `skills/check-harness/tests/`) — and then `scripts/test-block-main-push.sh`, the block-main-push hook's behaviour table. It exits 0 only when both pass. The tests build their fixtures under `mktemp -d` and never read your real `~/.claude`.
+
+---
+
 ## Project Structure
 
 ```
+Makefile                # `make test` — the whole test suite
 .claude-plugin/
   marketplace.json      # Marketplace manifest (source: ./plugins/harness-ops)
   plugin.json           # Plugin manifest
@@ -207,6 +220,8 @@ commands/               # Bridges to the harness-factory plugin only
   team-build.md
 skills/                 # Skill implementations
   check-harness/SKILL.md
+  check-harness/scripts/  # Tested Python collectors (inventory, session metrics, project signals, …)
+  check-harness/tests/    # Their acceptance tests (collected by `make test`)
   scaffold/SKILL.md
   specify/SKILL.md
   decompose/SKILL.md
