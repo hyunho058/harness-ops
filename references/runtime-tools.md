@@ -54,6 +54,7 @@ run-portability-tests
 read-declared-surface-schema
 spawn-named-checker
 spawn-inline-checker
+spawn-worker
 ```
 <!-- END CANONICAL-IDS -->
 
@@ -213,7 +214,8 @@ distinguishes real delegation from self-authored output.
 ## `spawn-inline-checker` — `determinism-critical: true` (**divergent**)
 
 For a checker that has **no `agents/<name>.md` file** — its prompt is written inline at the call
-site (coherence-audit's contradiction judge is the only current case). Separate from
+site (coherence-audit's contradiction judge and agent-orchestrate's unattended requirement
+checker cite it). Separate from
 `spawn-named-checker` because that procedure's step 1 sources a body from `../../agents/`, which
 is unsatisfiable here; a skill citing the wrong one leaves the runtime to improvise, which is the
 substitution these ids exist to prevent.
@@ -226,6 +228,25 @@ substitution these ids exist to prevent.
 Same assertion requirement as `spawn-named-checker` above, minus the artifact clause: there is no
 named report file, so the **registry check is the only evidence** that the judgement came from a
 separate context rather than the caller grading its own work.
+
+---
+
+## `spawn-worker` — `determinism-critical: true` (**divergent**)
+
+For a subagent that **builds** — writes tests or code — from a prompt written inline at the call
+site (agent-orchestrate's unattended TT writers and implementation workers cite it). Separate from
+`spawn-inline-checker` because that procedure describes the subagent as an independent judge: a
+builder defined under a judge's role contract is told one thing by its description and the
+opposite by its prompt.
+
+| Runtime | Procedure |
+|---|---|
+| Claude Code | `Agent(subagent_type="general-purpose")` with the inline prompt |
+| agy | `define_subagent` with a role name, a description stating what it builds (the tests for one requirement, or one task's implementation), and the inline prompt as its body → then `invoke_subagent` |
+
+Same assertion requirement as `spawn-inline-checker`: the registry check is the only evidence that
+the work came from a separate context. For a test writer that separation is the point — the
+tests and the code they check must come from different contexts (maker ≠ checker).
 
 ---
 

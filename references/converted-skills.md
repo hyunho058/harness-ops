@@ -63,3 +63,9 @@ Listing `check-harness` also brings `agents/*.md` into lint scope, because its
 `requirements-interview`, `scaffold`, `specify`
 
 These are untouched by the gate until they are converted and listed.
+
+`agent-orchestrate` is the partial case. Its Unattended Mode already cites
+`capability:spawn-worker` and `capability:spawn-inline-checker`, and it states the registry
+assertion both procedures require. The interactive patterns still contain `Agent(`,
+`TaskCreate(`, and `Skill(` call sites, though, so listing it now would fail the sweep. Until
+those are converted, no lint keeps the two spawn ids in the skill; review does.
