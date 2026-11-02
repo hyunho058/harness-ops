@@ -48,6 +48,23 @@ temp/
 specs/**/progress.md
 specs/**/.*.tmp
 
+# Specs from before specs/ was tracked (#36). They stay local; a new spec is
+# tracked by default.
+specs/build-order-orchestrator/
+specs/check-harness-b2-cross-session-planning/
+specs/coherence-report.md
+specs/decompose-defect-remediation/
+specs/loop-resumable-progress/
+specs/night-driver/
+specs/orchestrate-requirement-check/
+specs/orchestrate-verify-gate/
+specs/project-hooks/
+specs/rename-skills/
+specs/skills-korean-to-english/
+specs/spec-set-coherence/
+specs/tdd-test-first/
+specs/worktree-dual-runtime-support/
+
 # Local workspace / agent working files (incl. timestamped backups)
 _workspace*/
 
