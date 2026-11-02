@@ -47,6 +47,7 @@ fetch-url
 search-web
 track-tasks
 schedule-wakeup
+invoke-skill
 resolve-harness-root
 run-glob-overlap
 run-entry-digest
@@ -106,6 +107,25 @@ adding an entry, not inventing prose at a call site.
   under agy the cwd is the *user's* project, not this repo.
 - **Shell arguments** cannot use a skill-relative path, because the shell resolves it against that
   same user cwd. They must use an absolute path built from `resolve-harness-root` below.
+
+---
+
+## `invoke-skill` — `determinism-critical: false`
+
+Hands control to another harness-ops skill with a request string (`args`), in the same session.
+
+| Runtime | Procedure |
+|---|---|
+| Claude Code | `Skill(skill="harness-ops:<name>", args="<args>")` |
+| agy | agy has no skill-call tool. 1. `read-file` → `../../skills/<name>/SKILL.md` (skill-relative, per the path rule). 2. Follow that file from its first step, in this session, treating `<args>` as the user's invocation of it. |
+
+**`<args>` is passed verbatim.** Under agy, `<args>` *is* the invocation the loaded skill sees, so
+a marker in it (`mode: unattended`, `mode: batch`) counts as carried by the invocation exactly as
+it would through `Skill`. Do not summarise or paraphrase it. Markers that also need a matching
+record on disk (the spec's `## Meta`) are still checked against that record by the loaded skill.
+
+If the file cannot be read, halt with `unresolved: harness root did not validate at <path>`, naming
+the path tried (see `## Halting`). Do not carry on by reasoning about what the skill would do.
 
 ---
 
