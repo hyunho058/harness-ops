@@ -56,6 +56,13 @@ if invoked with `mode: batch` AND the feature's partition-manifest entry carries
 the goal derived from the partition context (the human already owns the bar via
 decompose's ONE partition gate). A bare invocation with no marker is unchanged.
 
+**Unattended bypass (additive, opt-in — see specify `SKILL.md` › `## Unattended Mode`):**
+if the user's invocation carries `mode: unattended`, SKIP this mirror `AskUserQuestion`:
+write the mirror as `## Confirmed Goal`, recording each inference beyond the literal
+request as `(inferred)`, and add `- **Mode**: unattended` to `## Meta`. If the request
+is too vague to state a goal with at least one checkable done criterion, stop — that is
+an Unattended Mode stop condition, not a reason to guess.
+
 ---
 
 ## L1: Context Research

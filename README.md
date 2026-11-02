@@ -10,7 +10,7 @@ The art of designing environments where AI agents work well — 13 skills coveri
 |-------|-------------|---------|
 | **check-harness** | Diagnose harness maturity via 6-axis / 24-item checklist + 2×3 matrix (Static/Behavioral/Growth × User/Project). Runs 4 parallel subagents. | `/harness-ops:check-harness` |
 | **scaffold** | Interview-driven greenfield scaffolding — code structure, test infra, guard rails, and CLAUDE.md with domain context | `/harness-ops:scaffold` |
-| **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md). **Additive `mode: batch`** path (driven by `decompose`) skips only the human approval prompts — L1–L4 derivation and the per-spec L2-reviewer still run; a bare `/specify` is byte-unchanged. | `/harness-ops:specify "goal"` |
+| **specify** | Turn a goal into a structured implementation plan: L0 Goal → L1 Context → L2 Decisions → L3 Requirements → L4 Tasks (spec.md). **Additive `mode: batch`** path (driven by `decompose`) skips only the human approval prompts — L1–L4 derivation and the per-spec L2-reviewer still run. A fresh-context **Spec Review** checks the finished spec before Execute. **Opt-in `mode: unattended`** runs specify → review → agent-orchestrate → loop with no prompts, on its own worktree branch (see [Unattended single task](#unattended-single-task)). | `/harness-ops:specify "goal"` |
 | **decompose** | One project goal → **N coherent, sibling-aware** `specs/<feature>/spec.md`. Proposes a *partition* (disjoint declared-surface globs + `depends_on` + shared decisions made once), concentrates judgment at **one** human gate (Approve/Revise/Abort), drives `specify` in `mode: batch` per feature, then runs `coherence-audit` on its own output (maker≠checker). Reuses specify — never reimplements it. | `/harness-ops:decompose "goal"` |
 | **coherence-audit** | Independently check a **set** of specs for cross-spec incoherence: **overlap** (deterministic, `depends_on`-gated glob set-intersection), **contradiction** (a *separate* judge subagent over shared-surface `## Decisions`), **redundancy** (advisory). Reads spec files only (maker≠checker); emits `coherence-report.md` + one `BLOCK \| WARN \| OK` verdict. **Flag-only** — never rewrites a spec. Runs standalone, in build-order's Plan, and at decompose-end. | `/harness-ops:coherence-audit [specs]` |
 | **requirements-interview** | Socratic requirements interview — clarifies ambiguous goals through structured questioning | `/harness-ops:requirements-interview "topic"` |
@@ -58,6 +58,9 @@ claude plugin install harness-ops@harness-ops-marketplace
 
 # Turn a goal into a full implementation plan
 /harness-ops:specify "implement user authentication"
+
+# Run one task start to finish with no prompts, in its own background worktree
+claude --bg -w csv-export --permission-mode auto "/harness-ops:specify add CSV export to the report page mode: unattended"
 
 # Decompose ONE goal into N coherent, sibling-aware specs (then feed to build-order)
 /harness-ops:decompose "multi-tenant billing: auth, metering, invoicing"
@@ -124,7 +127,7 @@ The night-loop stack *builds* a set of specs; these two skills make sure the set
 
 The two share one data contract — the **declared surface** (`## Declared Surface`: owned path globs + `depends_on`) that `decompose` *emits* and `coherence-audit` *consumes* — which is what makes overlap detection deterministic. The checker runs at **three points**: standalone on any spec set, at **decompose-end** (so even the front-door path is independently checked), and inside **build-order's Plan** (so a cross-spec `BLOCK` surfaces at the existing batch-approval and a known collision can't slip into an unattended run). Severity is tiered for unattended safety: a contradiction or an **unordered overlap BLOCKS** (it never degrades to an unread WARN), while redundancy / undeclared surfaces only WARN.
 
-Everything is additive and opt-in: `specify` gains only the `mode: batch` path (a bare `/specify` is byte-unchanged), `build-order` gains only a single `coherence-audit` call (its gating logic is untouched), and `loop` / `autopilot` are unchanged.
+Everything is additive and opt-in: for this flow `specify` gains only the `mode: batch` path (a bare `/specify` is unaffected by it), `build-order` gains only a single `coherence-audit` call (its gating logic is untouched), and `loop` / `autopilot` are unchanged.
 
 ```
 [goal]  /decompose  →  partition (1 human gate)  →  specify mode:batch × N  →  coherence-audit
@@ -133,6 +136,22 @@ Everything is additive and opt-in: `specify` gains only the `mode: batch` path (
                                                                                      ↓
                                                   /build-order  (re-audits at Plan)  →  night-loop stack
 ```
+
+## Unattended single task
+
+One request, no prompts: `specify` writes the spec, a fresh-context reviewer checks it, `specify` fixes what the reviewer finds, and `agent-orchestrate` builds it and verifies it through `loop`.
+
+```bash
+claude --bg -w <name> --permission-mode auto "/harness-ops:specify <goal> mode: unattended"
+```
+
+- **Your marker is the only approval.** `mode: unattended` in your own request replaces every prompt in the chain: the seven approvals (goal mirror, L2, L3, Execute, pattern, plan, loop contract), the L2 interview questions, and loop's lesson curation and escalation questions. `specify` writes `- **Mode**: unattended` into the spec's Meta, and `- **Approved by**: unattended (request marker)` only after its review passes; `agent-orchestrate` and `loop` read both lines from the spec file before acting on the marker.
+- **Decisions are made and recorded.** Where your request doesn't settle a design choice, `specify` picks one and marks it `Status: assumed`, with the rejected alternatives.
+- **The fence still holds.** Schema changes, migrations that can lose data, auth / permission, payment, and security work are never decided or built unattended. Those tasks and their dependents are parked; independent tasks keep running.
+- **Own branch only.** The run refuses to start on the default branch or a detached `HEAD`. `-w` gives it a worktree; `--permission-mode auto` approves routine tool calls.
+- **You get a report.** `unattended-report.md` in the spec folder (`specs/<goal-name>/`, named from the goal, not the `-w` name) lists what ran, what was assumed, what was parked, and both verdicts, and a push notification points at it. A fully green run is committed on its branch (never pushed or merged); anything else is left uncommitted for you to review.
+
+The run stops before building anything if the goal is too vague to give a checkable done criterion, if the spec still fails review after two re-reviews, or if nothing is left to run once fenced tasks and everything depending on them are set aside.
 
 ## Usage with Gemini CLI
 

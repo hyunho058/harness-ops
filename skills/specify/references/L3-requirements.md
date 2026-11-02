@@ -149,6 +149,12 @@ if invoked with `mode: batch` AND the feature's partition-manifest entry carries
 derived requirements (the coverage / boundary / GWT self-checks above still run). A
 bare invocation with no marker is unchanged.
 
+**Unattended bypass (additive, opt-in — see specify `SKILL.md` › `## Unattended Mode`):**
+if the user's invocation carries `mode: unattended`, print the requirements as above,
+SKIP the `AskUserQuestion`, and advance to L4 (the self-checks above still run). A
+requirement that depends on an `L2 fenced:` gap is still written; L4 marks the tasks
+that fulfill it as fenced.
+
 ### L3 Gate
 
 Read spec.md and verify:
