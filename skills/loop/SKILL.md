@@ -219,8 +219,10 @@ human re-enters via Phase 0, which re-runs VERIFY and re-approves.
    spec/feature dir, or a path the user named). If one exists, read it and use
    its gates. If not, derive a draft from the task + project:
    - Detect Gate-1 commands from the project (e.g. `package.json` scripts,
-     `Makefile`, `pyproject.toml`, CI config). Use `references/loop-template.md`
-     as the skeleton.
+     `Makefile`, `pyproject.toml`, CI config). With no configured test command, use
+     the default command of an installed runner whose existing tests show it in use
+     (`test_*.py` → `pytest`, `*_test.go` → `go test ./...`), and note in the
+     contract that it was inferred. Use `references/loop-template.md` as the skeleton.
    - Propose Gate-2 thresholds and Gate-3 items relevant to the task.
 2. **Load prior lessons (self-learning).** If `loop.md` has a `## Lessons`
    section, fold every `status: active` lesson into the contract by its `form`:
