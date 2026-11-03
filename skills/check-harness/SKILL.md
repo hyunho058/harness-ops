@@ -473,10 +473,16 @@ built-in `/loop` scheduler never counts as `harness-ops:loop`.
 - **C2 — CLAUDE.md quality** (one judge; the drift report corroborates):
   `CONTEXT.claude_md.quality.contradictions > 0` → FAIL. Contradictions 0, and
   `CONTEXT.drift_report` is not `null`, its `generated` falls within 30 days of `AS_OF_MS` and
-  its `contradictions ≥ 1` → WEAK_PASS, evidence `drift_report.path`. Otherwise as before:
-  contradictions 0 and ambiguities 0 → PASS (WEAK_PASS when `weak_pass_flags` names
-  `claude_md.quality`). A `generated` that is `null` or cannot be read as a date is not within
-  30 days; a `drift_report.contradictions` of `null` does not count.
+  its `contradictions ≥ 1` → WEAK_PASS, evidence `drift_report.path`. Otherwise, with
+  contradictions 0:
+  - `ambiguities` and `placeholders` both 0 → PASS (WEAK_PASS when `weak_pass_flags` names
+    `claude_md.quality`);
+  - `ambiguities ≥ 1` or `placeholders ≥ 1` → WEAK_PASS, evidence the two counts and the first
+    `ambiguity_examples` entry. Only a contradiction fails C2: a vague phrase or a leftover TODO
+    makes an instruction weaker, while a contradiction makes two instructions incompatible.
+
+  A `generated` that is `null` or cannot be read as a date is not within 30 days; a
+  `drift_report.contradictions` of `null` does not count.
 - **D4 — project skills/agents used**: registered = `AUTOMATION.skills[].key` and
   `AUTOMATION.agents[].key`. PASS when ≥ 1 skill key is in `SESSION_PROJECT.skills_invoked ∪
   commands_invoked` or ≥ 1 agent key is in `SESSION_PROJECT.agents_invoked`, evidence the

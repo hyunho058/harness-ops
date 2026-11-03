@@ -8,7 +8,10 @@ runs it. Each file counts as one case: exit 0 passes, any other exit fails.
 
 - **Name**: `tt{n}_{topic}_test.sh`, where `{n}` is the spec's TT task number and
   `{topic}` a short snake_case label (for example `tt1_skill_name_test.sh`).
-  A file that does not end in `_test.sh` is not collected.
+  A file that does not end in `_test.sh` is not collected. A regression test
+  that comes from a real run, not from a spec TT task, is named
+  `{topic}_test.sh` (for example `command_skill_dedupe_test.sh`), so the `tt`
+  files stay the set `specs/check-harness-refresh/gwt-tests.md` hashes.
 - **Self-contained fixtures**: build every fixture (home directory, repos,
   settings, session logs) under a scratch directory from `mktemp -d`, and remove
   it on exit with a `trap`.
