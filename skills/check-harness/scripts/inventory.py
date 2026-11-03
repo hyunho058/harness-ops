@@ -23,7 +23,10 @@ Sources (all read-only):
   ``<root>/skills/*/SKILL.md`` + ``<root>/.claude/skills/**/SKILL.md``
   (project_local). Plugin commands count as skills: each installed plugin's
   ``installPath/commands/*.md`` and, in a plugin source tree,
-  ``<root>/commands/*.md`` (name = basename without ``.md``). When ``<root>/.claude-plugin/plugin.json`` exists, the
+  ``<root>/commands/*.md`` (name = basename without ``.md``). A command whose
+  key equals a skill already listed from the same plugin (``commands/x.md``
+  beside ``skills/x/SKILL.md``) is the same skill and is listed once, as the
+  SKILL.md. When ``<root>/.claude-plugin/plugin.json`` exists, the
   project's ``skills/*`` take that plugin's name as owner and the installed
   copy of the same plugin is not scanned (D6).
 * Usage: ``~/.claude.json`` ``skillUsage``, classified per D4.
@@ -292,11 +295,16 @@ def main(argv):
 
     skills, findings, plugins = [], [], []
     seen_paths = set()
+    seen_keys = set()
 
-    def add(skill):
-        if skill["path"] in seen_paths:
+    def add(skill, command=False):
+        # A command is skipped when a SKILL.md already gave its key: the two
+        # files are one skill under one skillUsage key, so counting both would
+        # inflate total_installed and dead_count.
+        if skill["path"] in seen_paths or (command and skill["key"] in seen_keys):
             return
         seen_paths.add(skill["path"])
+        seen_keys.add(skill["key"])
         skills.append(skill)
 
     # Project sources first, so a SKILL.md reached twice keeps its owned entry.
@@ -306,7 +314,7 @@ def main(argv):
             add(make_skill(name, owner, "project_local", path))
         if source:
             for name, path in command_files(os.path.join(root, "commands")):
-                add(make_skill(name, owner, "project_local", path))
+                add(make_skill(name, owner, "project_local", path), command=True)
         for name, path in skill_tree(os.path.join(root, ".claude", "skills")):
             add(make_skill(name, None, "project_local", path))
 
@@ -328,8 +336,9 @@ def main(argv):
                     "source_version": source["version"],
                 })
         else:
+            commands = {path for _, path in command_files(os.path.join(p["install_path"], "commands"))}
             for name, path in found:
-                add(make_skill(name, p["name"], "plugin", path))
+                add(make_skill(name, p["name"], "plugin", path), command=path in commands)
         plugins.append({
             "id": p["id"],
             "name": p["name"],
@@ -339,7 +348,7 @@ def main(argv):
             "install_path": p["install_path"],
             "enabled_user": p["id"] in enabled["user"],
             "enabled_project": p["id"] in enabled["project"],
-            "skills_count": len(found),
+            "skills_count": len({hc.normalise(p["name"] + ":" + name) for name, _ in found}),
         })
 
     # MCP servers (D5): user, local, project, plugin.

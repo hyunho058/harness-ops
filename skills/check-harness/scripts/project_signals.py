@@ -372,7 +372,11 @@ def list_skills(root, plugin):
                     continue
                 seen.add(real)
                 name = entry[:-3]
-                out.append({"path": rel(root, path), "name": name, "key": make_key(owner, name)})
+                key = make_key(owner, name)
+                # commands/x.md beside skills/x/SKILL.md is one skill, listed once.
+                if any(s["key"] == key for s in out):
+                    continue
+                out.append({"path": rel(root, path), "name": name, "key": key})
     return out
 
 
