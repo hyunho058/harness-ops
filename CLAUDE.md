@@ -45,8 +45,10 @@ of which caught a real defect in this repo:
 **Never force-push.** On a rejected push or a rebase conflict, report it and stop; a commit
 survives `git rebase --abort`, so say so rather than leaving the user fearing lost work.
 
-**Attribution:** end commit messages with the `Co-Authored-By:` and `Claude-Session:` trailers the
-session provides, verbatim. Never hard-code a model name — it is session-specific.
+**Attribution:** end commit messages with the attribution trailers the session provides, verbatim —
+whichever of `Co-Authored-By:` and `Claude-Session:` it gives. Use only those: never add a trailer the
+session did not provide, and when it provides none, add none. Never hard-code a model name — it is
+session-specific.
 
 **Change history:**
 | Date | Change | Target | Reason |
@@ -55,3 +57,4 @@ session provides, verbatim. Never hard-code a model name — it is session-speci
 | 2026-09-15 | Drop the analyst phase; commit directly | git-analyst | User: the analyst reformats context it was already given, for a subagent round-trip per commit |
 | 2026-09-15 | Record the operator's load-bearing steps here | git-operator | Three rounds of fixes this session; scope check, `-F` commit, message verification and `HEAD` re-read each caught a real defect |
 | 2026-09-15 | Correct the `-m` rationale; accept hook-appended lines; guard detached `HEAD` | git-operator, git-commit | PR #26 review: a quoted heredoc through `-m` is byte-exact, so the old reason was disprovable; "any diff is a failure" reports `commit_failed` for a good commit under a `commit-msg` hook; `--abbrev-ref HEAD` yields `HEAD` when detached and the push is refused |
+| 2026-11-02 | Say which trailers to use when the session provides only some | git-operator, git-commit | check-harness C2: the rule named two trailers but not what to do with one; this session provides only `Co-Authored-By:`. Matches git-analyst.md: "if the orchestrator supplied none, emit none" |
