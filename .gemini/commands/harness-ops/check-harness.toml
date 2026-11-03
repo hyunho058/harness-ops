@@ -83,11 +83,13 @@ Checklist source: `references/checklist.md` (must read first to confirm item def
 
 **Output format** — Rich per-axis render in conversation + HTML/MD file save + auto-open
 - **Conversation**: 6 × per-axis sections + inline ASCII score bars + checklist tables (Phase 3 A block)
-- **Files**: saved to `.harness/check-reports/check-harness-{YYYY-MM-DD}-{scope}/`
+- **Files**: saved to this run's own `REPORT_DIR` (Phase 0 › Report directory),
+  `.harness/check-reports/check-harness-{YYYY-MM-DD}-{HHMMSS}-{scope}-{runtime}/`
   - `report.html` — visual report (CSS score gauge, per-axis expandable panels, self-contained)
   - `report.md` — markdown mirror (for diff·git·archive)
 - **Auto-open**: `capability:run-command` → `open {dir}/report.html` at the end
 - End of report one-liner: `📁 Saved: {dir}/ · 🌐 Opened: report.html`
+- `{dir}` is `REPORT_DIR` everywhere in this file.
 
 ---
 
@@ -108,8 +110,9 @@ options:
   - Project only (current project context·automation·project sessions)
 ```
 
-Then run the four setup steps below, in order, before any spawn. Each one records a value that
-Phase 1 passes to the analyzers and the Delegation assertion checks against.
+Then run the five setup steps below, in order, before any spawn. The first four record a value
+that Phase 1 passes to the analyzers and the Delegation assertion checks against; the fifth
+reserves the folder Phase 3 writes the report into.
 
 **`run-command` is required from here on.** Every step below and every analyzer's scripts run
 through `capability:run-command`. If it is refused or does not exist at any step of Phase 0, halt
@@ -164,7 +167,7 @@ rule above, with `<step>` = `project_root.py`.
 ### Cache directory
 
 Each run gets its own directory, so two concurrent runs, or runs in two worktrees, never
-overwrite each other's reports. One `capability:run-command` call (a shell variable does not
+overwrite each other's analyzer files. One `capability:run-command` call (a shell variable does not
 survive between calls):
 
 ```bash
@@ -184,6 +187,40 @@ whatever the scope. Paths in this run:
 | `{CACHE_DIR}/scratch-<NAME>/<script>.json` (`session_files.txt` for `session_files.py`) | that analyzer only — its scripts' stdout |
 
 The report footer prints `CACHE_DIR`.
+
+### Report directory
+
+Each run also writes its report to a folder of its own. A name made of the date and scope alone
+let a Claude Code run and an agy run on the same project and day write the same
+`report.html` and `report.md`, so the later run silently replaced the earlier one's report.
+The name adds the run's local time (from `AS_OF_MS`, to the second) and the runtime — the column
+id from `../../references/runtime-tools.md` › How to use this file, `claude-code` or `agy` —
+and a run that still finds its name taken takes the next free `-2`, `-3`, … suffix. One
+`capability:run-command` call, from the session's working directory, with `{scope}` = `user`,
+`project` or `all`:
+
+```bash
+python3 - "{AS_OF_MS}" "{scope}" "{runtime}" <<'EOF'
+import os, sys, time
+ms, scope, runtime = sys.argv[1:]
+stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(int(ms) / 1000))
+base = os.path.join(".harness", "check-reports", "check-harness-%s-%s-%s" % (stamp, scope, runtime))
+os.makedirs(os.path.dirname(base), exist_ok=True)
+path, n = base, 1
+while True:
+    try:
+        os.mkdir(path)
+        break
+    except FileExistsError:
+        n += 1
+        path = "%s-%d" % (base, n)
+print(os.path.realpath(path))
+EOF
+```
+
+Record the printed path as `REPORT_DIR`. `mkdir` without `-p` is what makes the folder this run's:
+it fails when the name exists, so two runs can never share one. Phase 3 writes `report.md` and
+`report.html` only into `REPORT_DIR`, and never into an existing report folder.
 
 ---
 
@@ -578,8 +615,8 @@ Using Phase 2 judgments as input, generate the key summary for the top of the re
 
 **Generate all 3 deliverables simultaneously**:
 - **A. Conversation render** (markdown template below) — output immediately
-- **B. report.md** (same content as A) — Write
-- **C. report.html** (based on references/html-template.html, self-contained) — Write, then `open`
+- **B. report.md** (same content as A) — Write to `{REPORT_DIR}/report.md`
+- **C. report.html** (based on references/html-template.html, self-contained) — Write to `{REPORT_DIR}/report.html`, then `open`
 
 ### A/B Markdown template (shared for conversation + report.md)
 
@@ -961,7 +998,7 @@ The template (`references/html-template.html`) is a self-contained dark dashboar
 ## Hard Rules
 
 1. **Do not read prompt content** — session-pattern-analyzer uses tool_use metadata only
-2. **Do not modify project files** — write only reports to `.harness/check-reports/` and this run's `{CACHE_DIR}/<NAME>.json` (analyzers write only their own `{CACHE_DIR}/scratch-<NAME>/`)
+2. **Do not modify project files** — write only reports, and only into this run's own `{REPORT_DIR}` under `.harness/check-reports/`, and this run's `{CACHE_DIR}/<NAME>.json` (analyzers write only their own `{CACHE_DIR}/scratch-<NAME>/`)
 3. **Evidence-based evaluation** — every status must include an evidence string
 4. **Context awareness** — mark N/A for items not applicable to the project type
 5. **Parallel execution** — Phase 1 subagents must be spawned in the same message (5 at once for Both scope)

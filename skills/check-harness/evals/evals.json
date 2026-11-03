@@ -5,7 +5,7 @@
       "id": 1,
       "name": "default-scope-asks",
       "prompt": "/check-harness",
-      "expected_output": "Phase 0 asks the scope with capability:ask-user, then resolves and validates the harness root, records AS_OF_MS, runs project_root.py and creates a per-run CACHE_DIR with five scratch-<NAME> directories. Phase 1 spawns the matching analyzers in one message (5 for Both: PORTFOLIO, SESSION_USER, SESSION_PROJECT, CONTEXT, AUTOMATION), each prompt carrying harness_root=, cache_dir=, days=30 and report=<NAME>. check-harness saves each return to {CACHE_DIR}/<NAME>.json, scores 26 items over 6 axes, and writes report.md and report.html under .harness/check-reports/.",
+      "expected_output": "Phase 0 asks the scope with capability:ask-user, then resolves and validates the harness root, records AS_OF_MS, runs project_root.py and creates a per-run CACHE_DIR with five scratch-<NAME> directories. It then creates a REPORT_DIR of its own, .harness/check-reports/check-harness-<YYYY-MM-DD>-<HHMMSS>-<scope>-<runtime>/ (runtime claude-code or agy, a -2 suffix when the name is taken), and Phase 3 writes report.md and report.html only there. Phase 1 spawns the matching analyzers in one message (5 for Both: PORTFOLIO, SESSION_USER, SESSION_PROJECT, CONTEXT, AUTOMATION), each prompt carrying harness_root=, cache_dir=, days=30 and report=<NAME>. check-harness saves each return to {CACHE_DIR}/<NAME>.json, scores 26 items over 6 axes, and writes report.md and report.html under .harness/check-reports/.",
       "files": []
     },
     {
