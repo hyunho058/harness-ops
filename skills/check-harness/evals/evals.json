@@ -5,21 +5,49 @@
       "id": 1,
       "name": "default-scope-asks",
       "prompt": "/check-harness",
-      "expected_output": "Phase 0 asks scope via AskUserQuestion, then runs matching subagents in parallel and generates the report file",
+      "expected_output": "Phase 0 asks the scope with capability:ask-user, then resolves and validates the harness root, records AS_OF_MS, runs project_root.py and creates a per-run CACHE_DIR with five scratch-<NAME> directories. It then creates a REPORT_DIR of its own, .harness/check-reports/check-harness-<YYYY-MM-DD>-<HHMMSS>-<scope>-<runtime>/ (runtime claude-code or agy, a -2 suffix when the name is taken), and Phase 3 writes report.md and report.html only there. Phase 1 spawns the matching analyzers in one message (5 for Both: PORTFOLIO, SESSION_USER, SESSION_PROJECT, CONTEXT, AUTOMATION), each prompt carrying harness_root=, cache_dir=, days=30 and report=<NAME>. check-harness saves each return to {CACHE_DIR}/<NAME>.json, scores 26 items over 6 axes, and writes report.md and report.html under .harness/check-reports/.",
       "files": []
     },
     {
       "id": 2,
       "name": "overall-scope-explicit",
       "prompt": "/check-harness overall — check my full Claude Code setup. I want to see which skills are dead and how I'm using agents.",
-      "expected_output": "Skip Per-Project subagents (CONTEXT, AUTOMATION), run only Overall 2 (PORTFOLIO, SESSION) in parallel. Report includes Portfolio Health + Execution Pattern only",
+      "expected_output": "User scope only: spawns skill-portfolio-analyzer (PORTFOLIO) and session-pattern-analyzer with scope=overall (SESSION_USER) in one message; no CONTEXT, AUTOMATION or SESSION_PROJECT spawn. Dead skills come from PORTFOLIO.summary.dead_count / skills[].dead in scratch-PORTFOLIO/inventory.json (renamed history and built-ins such as /loop are not ghosts), and agent use from SESSION_USER metrics (delegation_ratio, parallel_count = messages with >= 2 Agent spawns) over the last 30 days. B2 is judged from plan_first_ratio only, with no error for the missing artifact fallback.",
       "files": []
     },
     {
       "id": 3,
       "name": "natural-language-trigger",
       "prompt": "What's missing in the harness? Run a full project diagnosis.",
-      "expected_output": "Trigger maps to /check-harness with 'project' or 'all' scope. Runs Per-Project subagents and includes CLAUDE.md/rules/hooks quality report",
+      "expected_output": "Triggers check-harness with project or all scope. Runs project_root.py to find the project root (never $HOME), spawns SESSION_PROJECT (scope=project, project_dir=PROJECT_ROOT), context-quality-reviewer (CONTEXT) and project-automation-auditor (AUTOMATION); the report covers CLAUDE.md/rules quality, hooks from every source (project, user, plugin), the Axis 5 items D1–D6, and the Phase 2 joins for D4, D5 and E2.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "agy-empty-subagent-registry",
+      "prompt": "/check-harness all (running under Antigravity; manage_subagents returns an empty registry, every analyzer returns a valid report)",
+      "expected_output": "The run does not halt. The Delegation assertion reads manage_subagents once, records each analyzer's evidence grade as 'spawn return only (agy registry empty)', and continues to Phase 2. The report footer (markdown and the HTML {{DELEGATION_EVIDENCE}} slot) states that grade per analyzer, alongside the 30-day period and CACHE_DIR.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "missing-analyzer-return",
+      "prompt": "/check-harness all (the context-quality-reviewer spawn returns nothing usable — prose with no JSON object)",
+      "expected_output": "The run halts before Phase 2 with 'failed: spawn-named-checker returned no usable result (context-quality-reviewer CONTEXT: <reason>)', naming the analyzer and report, and prints no score. A report file that exists on disk does not substitute for the missing return.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "html-report-fully-rendered",
+      "prompt": "/check-harness all — and open the HTML report",
+      "expected_output": "report.html is written from references/html-template.html with every placeholder replaced — the file contains no literal '{{'. Empty lists render as a single 'None' item. The footer reads '26 items · 6 axes · session <id> · last 30 days · cache <CACHE_DIR> · evidence <per-analyzer grades>'. The file is opened with capability:run-command.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "name": "new-artifacts-lessons-ledgers-autopilot",
+      "prompt": "/check-harness project (the project has a loop.md with a real '## Lessons' record committed this week, including a '- form: gate1-command' lesson, a build_order.md, and an autopilot.md from a real run — its '## State' has run_started_at: 2026-10-30T01:00Z — whose '## Config' still sets killswitch_path: <runDir>/STOP)",
+      "expected_output": "AUTOMATION's project_signals.json reports lessons.updated_30d true and lessons.hardened_added_90d >= 1, so E1 and E3 can pass on lessons; ledgers lists build_order 1 and autopilot 1 in the Compounding Detail. D6 'Unattended runs are bounded' is FAIL, naming the autopilot.md path and killswitch_path in missing_limits (a <…> value is a placeholder). Skill stubs and templates (.claude/skills/, skills/, references/, tests/) are never counted as ledgers; with no real autopilot.md, D6 would be N/A.",
       "files": []
     }
   ]

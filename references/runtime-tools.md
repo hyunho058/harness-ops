@@ -77,7 +77,8 @@ Every entry declares four things:
 
 - **pinnable** — both runtimes execute the same bytes (a shipped script). Parity is by construction.
 - **divergent** — the procedures genuinely differ (subagent spawning). Parity cannot be pinned, so
-  these entries additionally require an **artifact + registry assertion** (see `spawn-named-checker`).
+  these entries additionally require an **evidence assertion** — the spawn's return and, under
+  agy, the subagent registry; each entry states its own rule.
 
 **The vocabulary is closed.** A skill may only cite an id defined here. Adding a capability means
 adding an entry, not inventing prose at a call site.
@@ -236,18 +237,29 @@ ignores frontmatter, but here the text is hand-fed as a prompt — an unstripped
 instructs the subagent to use tools that do not exist. Stripping the *whole* block instead would
 discard `name`/`description` and with them the read-only constraint, so strip keys, not the block.
 
-### Required assertion (divergent entries only)
+### Required assertion
 
-Because the procedures differ, parity cannot be guaranteed by construction. A caller must verify
-**both**:
+This rule applies to `spawn-named-checker` only; `spawn-inline-checker` and `spawn-worker` state
+their own below. Because the procedures differ, parity cannot be guaranteed by construction, so a
+caller checks each spawned analyzer:
 
-1. **Artifact** — the analyzer's named report exists (`SESSION_REPORT`, `CONTEXT_REPORT`,
-   `AUTOMATION_REPORT`, or the skill-portfolio report).
-2. **Registry** — under agy, `manage_subagents` shows the named analyzer as defined and invoked.
+1. **Spawn return — required.** The analyzer's own return must exist and parse as its named
+   report (the report the caller asked for, with the keys the caller requires). A missing or
+   unusable return halts: `failed: spawn-named-checker returned no usable result (<analyzer>[ <report>]: <reason>)` —
+   the report name is added when one analyzer runs more than once (e.g. `SESSION_USER` / `SESSION_PROJECT`).
+2. **Registry — recorded.** Under Claude Code the spawn is native and its return is the evidence;
+   there is no registry to query. Under agy, read `manage_subagents` and record what it said:
+   - lists the analyzer as defined and invoked → the stronger grade; continue.
+   - **empty** (observed in some agy sessions), or **could not be read** → record `spawn return only (agy registry empty)`
+     (or `… (agy registry unreadable)`) and continue. An empty registry says nothing either way, and halting on it would make the
+     caller unusable on agy.
+   - lists other subagents but **not this analyzer** → halt with the `failed:` message above
+     (reason: not in agy registry). That registry is a real answer, and it says the report was
+     written in-context.
 
-Artifact existence alone is **not** sufficient: a main agent that skips delegation entirely and
-writes a well-formed report in-context produces an indistinguishable file. Only the registry check
-distinguishes real delegation from self-authored output.
+The caller keeps the evidence grade per analyzer and reports it with its result. A report file
+alone is **not** evidence: a main agent that skips delegation entirely and writes a well-formed
+report in-context produces an indistinguishable file.
 
 ---
 
@@ -266,9 +278,9 @@ substitution these ids exist to prevent.
 | Claude Code | `Agent(subagent_type="general-purpose")` with the inline prompt |
 | agy | `define_subagent` with a role name, a description stating it is an independent judge, and the inline prompt as its body → then `invoke_subagent` |
 
-Same assertion requirement as `spawn-named-checker` above, minus the artifact clause when the
-caller has no named report file. Evidence is **per runtime**, matching the registry scoping in that
-entry:
+Required assertion: where the caller has a named report file, that report must exist; where it
+has none, there is no artifact clause. The evidence that the judgement came from a separate
+context is **per runtime**:
 
 | Runtime | Evidence that the judgement came from a separate context |
 |---|---|
@@ -295,8 +307,14 @@ opposite by its prompt.
 | Claude Code | `Agent(subagent_type="general-purpose")` with the inline prompt |
 | agy | `define_subagent` with a role name, a description stating what it builds (the tests for one requirement, or one task's implementation), and the inline prompt as its body → then `invoke_subagent` |
 
-Same assertion requirement as `spawn-inline-checker`: the registry check is the only evidence that
-the work came from a separate context. For a test writer that separation is the point — the
+Required assertion: where the caller names a report file, that report must exist; where it names
+none, there is no artifact clause. Evidence that the work came from a separate context is **per
+runtime**: under Claude Code the spawn is native and its own return is the evidence, with no
+registry to query; under agy it is the spawn's return **plus** `manage_subagents` where it is
+readable — the registry is the only evidence there that the work came from a separate context,
+and the stronger signal, so check it. It is **not** a pass/fail bar on its own (it is observed to
+come back empty in some agy sessions): record what the registry said and let the caller decide
+what an absent entry means for its verdict. For a test writer that separation is the point — the
 tests and the code they check must come from different contexts (maker ≠ checker).
 
 ---
@@ -317,6 +335,7 @@ The message must state **which** of these occurred:
 | The tool does not exist in this runtime | `unavailable: <procedure> not provided by <runtime>` |
 | The tool exists but was denied | `denied: <procedure> requires permission not granted (e.g. agy headless -p auto-denies run_command)` |
 | Root validation failed | `unresolved: harness root did not validate at <path>` |
+| A spawned checker's return is missing or unusable, or the agy registry lists other subagents but not it (`spawn-named-checker`) | `failed: spawn-named-checker returned no usable result (<analyzer>[ <report>]: <reason>)` |
 
 Collapsing these into one message makes every failure ambiguous — a denial reads as a missing
 capability, and the fix for each is different.

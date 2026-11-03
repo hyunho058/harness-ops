@@ -4,7 +4,8 @@
 > that is easy to omit and fatal to omit — **evidence that the review was actually
 > delegated**. Artifact existence alone proves nothing: an orchestrator that skipped
 > delegation and wrote a well-formed report from its own context produces a file
-> indistinguishable from the delegated one (`skills/check-harness/SKILL.md:180-190`).
+> indistinguishable from the delegated one (`skills/check-harness/SKILL.md` › "Delegation assertion":
+> the spawn's own return, not a report file, is the required evidence).
 > The `evidence` field is the only thing that tells them apart.
 > **This doc defines DATA + field semantics only.** How the gate is run, how findings feed
 > rework, and the anti-spin rule live in `crew`'s SKILL.md.
@@ -127,7 +128,7 @@ When headless startup fails, the review degrades to a subagent rather than stopp
 global skill meets missing binaries, denied permissions and auto-denied tools often enough
 that halting would make whole environments unusable (D18). But the degraded path must
 carry **equivalent evidence**: the `Agent` call's own return, which under Claude Code is
-the native spawn's evidence (`skills/check-harness/SKILL.md:176-178`).
+the native spawn's evidence (`skills/check-harness/SKILL.md` › "Delegation assertion", step 2).
 
 Without this requirement the evidence rule is trivially bypassed — "headless genuinely
 failed" and "the orchestrator skipped delegation and wrote the file itself" produce the

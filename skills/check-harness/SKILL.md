@@ -3,7 +3,7 @@ name: check-harness
 argument-hint: ""
 description: |
   Harness maturity diagnosis — evaluates the harness cycle (Scaffolding → Context → Planning →
-  Execution → Verification → Compounding) using a **6-axis 24-item checklist** and a
+  Execution → Verification → Compounding) using a **6-axis 26-item checklist** and a
   **2×3 analysis matrix** (Static/Behavioral/Growth × User/Project).
   All judgments stem from the gap between "what is set up (Static) ↔ what is actually done (Behavioral)"
   or "whether the harness is growing (Growth)".
@@ -35,9 +35,10 @@ allowed-tools:
 > **Runtime contract — read this first.** Before executing any step below, read
 > `../../references/runtime-tools.md`. This skill names **capabilities**, not runtime tool
 > names. The four analyzers are spawned with the pinned `capability:spawn-named-checker`
-> procedure — a divergent procedure, so its result must be confirmed by BOTH the named report
-> artifact and the subagent registry. A report that exists proves nothing on its own: an agent
-> that skipped delegation and wrote it in-context produces an identical file.
+> procedure — a divergent procedure, so each analyzer's spawn return is required evidence and,
+> under Antigravity, the subagent registry is read and recorded as well (see "Delegation
+> assertion" in Phase 1). A report file that exists proves nothing on its own: an agent that
+> skipped delegation and wrote it in-context produces an identical file.
 
 Evaluates along the **6-axis cycle**: **Scaffolding → Context → Planning → Execution → Verification → Compounding**.
 Checklist source: `references/checklist.md` (must read first to confirm item definitions).
@@ -52,11 +53,13 @@ Checklist source: `references/checklist.md` (must read first to confirm item def
 
 **Output format** — Rich per-axis render in conversation + HTML/MD file save + auto-open
 - **Conversation**: 6 × per-axis sections + inline ASCII score bars + checklist tables (Phase 3 A block)
-- **Files**: saved to `.harness/check-reports/check-harness-{YYYY-MM-DD}-{scope}/`
+- **Files**: saved to this run's own `REPORT_DIR` (Phase 0 › Report directory),
+  `.harness/check-reports/check-harness-{YYYY-MM-DD}-{HHMMSS}-{scope}-{runtime}/`
   - `report.html` — visual report (CSS score gauge, per-axis expandable panels, self-contained)
   - `report.md` — markdown mirror (for diff·git·archive)
 - **Auto-open**: `capability:run-command` → `open {dir}/report.html` at the end
 - End of report one-liner: `📁 Saved: {dir}/ · 🌐 Opened: report.html`
+- `{dir}` is `REPORT_DIR` everywhere in this file.
 
 ---
 
@@ -77,28 +80,129 @@ options:
   - Project only (current project context·automation·project sessions)
 ```
 
-### Project root discovery (when Project scope is included)
+Then run the five setup steps below, in order, before any spawn. The first four record a value
+that Phase 1 passes to the analyzers and the Delegation assertion checks against; the fifth
+reserves the folder Phase 3 writes the report into.
 
-Walk up from cwd and find the directory containing `.claude` or `CLAUDE.md` as `PROJECT_ROOT`. If not found, deactivate Project scope.
+**`run-command` is required from here on.** Every step below and every analyzer's scripts run
+through `capability:run-command`. If it is refused or does not exist at any step of Phase 0, halt
+with `denied: run-command requires permission not granted (Phase 0: <step>)` or
+`unavailable: run-command not provided by <runtime> (Phase 0: <step>)` (the map's `## Halting`
+rows) and print no score. Do not continue: without it every script-owned item turns N/A, and a
+report that looks complete but measured nothing misrepresents itself.
+
+### Harness root
+
+`ROOT` = `capability:resolve-harness-root`. Validate it with the canonical test before using it,
+via `capability:run-command`:
+
+```bash
+test -d "{ROOT}/skills" && test -d "{ROOT}/agents" && test -f "{ROOT}/skills/check-harness/scripts/project_root.py"
+```
+
+A non-zero exit halts the run with `unresolved: harness root did not validate at {ROOT}`. Never
+guess another root and never reason about what a script would have printed.
+
+### Run time
+
+Record `AS_OF_MS` (the current epoch time in milliseconds) once, via `capability:run-command`:
+
+```bash
+python3 -c 'import time; print(int(time.time() * 1000))'
+```
+
+Every analyzer that takes a reference time gets this one value, so every `--as-of-ms` in the run
+is one check-harness chose and can compare with the script's `params`.
+
+### Project root
+
+Run `project_root.py` from the session's working directory (the user's project) via
+`capability:run-command`:
+
+```bash
+python3 "{ROOT}/skills/check-harness/scripts/project_root.py"
+```
+
+| Result | `PROJECT_ROOT` | Project scope |
+|---|---|---|
+| exit 0 | the single line on stdout (already a resolved absolute path) | on, if selected |
+| exit 3 | none | **off** — the report states the stderr reason (`no project root: …`) |
+| any other non-zero exit | none | **off** — the report states `warning: script failed: project_root.py exit <n>` |
+
+A failed discovery is never a halt: User scope still runs, and PORTFOLIO is spawned without a
+`project_root`. If the user asked for Project only and discovery fails, there is nothing left to
+score — say why and stop. A `run-command` refusal here is not a failed discovery: it halts per the
+rule above, with `<step>` = `project_root.py`.
 
 ### Cache directory
 
+Each run gets its own directory, so two concurrent runs, or runs in two worktrees, never
+overwrite each other's analyzer files. One `capability:run-command` call (a shell variable does not
+survive between calls):
+
 ```bash
-mkdir -p /tmp/cc-cache/check-harness/
+mkdir -p "${TMPDIR:-/tmp}/cc-cache/check-harness" \
+  && d=$(mktemp -d "${TMPDIR:-/tmp}/cc-cache/check-harness/run.XXXXXX") \
+  && mkdir "$d/scratch-PORTFOLIO" "$d/scratch-SESSION_USER" "$d/scratch-SESSION_PROJECT" \
+           "$d/scratch-CONTEXT" "$d/scratch-AUTOMATION" \
+  && printf '%s\n' "$d"
 ```
 
-Output paths:
-- `/tmp/cc-cache/check-harness/PORTFOLIO.json`
-- `/tmp/cc-cache/check-harness/SESSION_USER.json`
-- `/tmp/cc-cache/check-harness/SESSION_PROJECT.json`
-- `/tmp/cc-cache/check-harness/CONTEXT.json`
-- `/tmp/cc-cache/check-harness/AUTOMATION.json`
+Record the printed path as `CACHE_DIR`. All five `scratch-<NAME>` directories are created
+whatever the scope. Paths in this run:
+
+| Path | Written by |
+|---|---|
+| `{CACHE_DIR}/<NAME>.json` — `PORTFOLIO`, `SESSION_USER`, `SESSION_PROJECT`, `CONTEXT`, `AUTOMATION` | check-harness, from each analyzer's return (`capability:write-file`) |
+| `{CACHE_DIR}/scratch-<NAME>/<script>.json` (`session_files.txt` for `session_files.py`) | that analyzer only — its scripts' stdout |
+
+The report footer prints `CACHE_DIR`.
+
+### Report directory
+
+Each run also writes its report to a folder of its own. A name made of the date and scope alone
+let a Claude Code run and an agy run on the same project and day write the same
+`report.html` and `report.md`, so the later run silently replaced the earlier one's report.
+The name adds the run's local time (from `AS_OF_MS`, to the second) and the runtime — the column
+id from `../../references/runtime-tools.md` › How to use this file, `claude-code` or `agy` —
+and a run that still finds its name taken takes the next free `-2`, `-3`, … suffix. One
+`capability:run-command` call, from the session's working directory, with `{scope}` = `user`,
+`project` or `all`:
+
+```bash
+python3 - "{AS_OF_MS}" "{scope}" "{runtime}" <<'EOF'
+import os, sys, time
+ms, scope, runtime = sys.argv[1:]
+stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(int(ms) / 1000))
+base = os.path.join(".harness", "check-reports", "check-harness-%s-%s-%s" % (stamp, scope, runtime))
+os.makedirs(os.path.dirname(base), exist_ok=True)
+path, n = base, 1
+while True:
+    try:
+        os.mkdir(path)
+        break
+    except FileExistsError:
+        n += 1
+        path = "%s-%d" % (base, n)
+print(os.path.realpath(path))
+EOF
+```
+
+Record the printed path as `REPORT_DIR`. `mkdir` without `-p` is what makes the folder this run's:
+it fails when the name exists, so two runs can never share one. Phase 3 writes `report.md` and
+`report.html` only into `REPORT_DIR`, and never into an existing report folder.
 
 ---
 
 ## Phase 1 — Parallel Data Collection
 
 **Spawn all subagents for the selected scope in a single message.**
+
+Every prompt passes `harness_root={ROOT}`, `cache_dir={CACHE_DIR}`, `days=30` and its report name
+(`report=<NAME>`). The analyzers run their scripts with these values and echo them back in each
+script's `params`, which the Delegation assertion compares with what this prompt said. Each
+analyzer's final message is its report JSON only; it writes scratch files only under
+`{cache_dir}/scratch-<NAME>/` and saves no report itself.
 
 ### User scope agents (2)
 
@@ -107,13 +211,16 @@ capability:spawn-named-checker
   checker: "skill-portfolio-analyzer",
   description: "Skill portfolio health scan",
   prompt: """
-    Cross-analyze all installed skills/plugins/MCP against ~/.claude.json.
-    Include enabledPlugins (user/project), mcpServers (user + project .mcp.json),
-    installed plugin inventory, MCP call usage (last 30 days).
-    Include current_state/unused_mcp/plugin_findings fields.
-    Save to /tmp/cc-cache/check-harness/PORTFOLIO.json.
-    project_root={PROJECT_ROOT if available}
-    dead_days=90, low_value_days=60, low_value_count=3
+    report=PORTFOLIO
+    harness_root={ROOT}
+    cache_dir={CACHE_DIR}
+    project_root={PROJECT_ROOT}   (omit this line when there is no PROJECT_ROOT)
+    as_of_ms={AS_OF_MS}
+    days=30, dead_days=90
+    Inventory installed skills, plugins and MCP servers with inventory.py; judge
+    description-duplicate clusters and trigger collisions; estimate MCP usage over the
+    last 30 days from top-level session files.
+    Return the PORTFOLIO JSON as your final message.
   """
 )
 
@@ -121,9 +228,12 @@ capability:spawn-named-checker
   checker: "session-pattern-analyzer",
   description: "User-wide session pattern scan",
   prompt: """
-    scope=overall, days=7, long_session_min=20.
-    Analyze tool_use metadata only from all sessions under ~/.claude/projects/. Never read prompt text.
-    Save to /tmp/cc-cache/check-harness/SESSION_USER.json.
+    report=SESSION_USER
+    harness_root={ROOT}
+    cache_dir={CACHE_DIR}
+    scope=overall, days=30, long_session_min=20
+    tool_use metadata only, from session_files.py + session_metrics.py. Never read prompt text.
+    Return the SESSION_USER JSON as your final message.
   """
 )
 ```
@@ -135,9 +245,12 @@ capability:spawn-named-checker
   checker: "session-pattern-analyzer",
   description: "Project-scope session pattern scan",
   prompt: """
-    scope=current_project, project_dir={PROJECT_ROOT}, days=30, long_session_min=20.
-    Target only sessions for this project. tool_use metadata only.
-    Save to /tmp/cc-cache/check-harness/SESSION_PROJECT.json.
+    report=SESSION_PROJECT
+    harness_root={ROOT}
+    cache_dir={CACHE_DIR}
+    scope=project, project_dir={PROJECT_ROOT}, days=30, long_session_min=20
+    Only this project's sessions (and its live worktrees). tool_use metadata only.
+    Return the SESSION_PROJECT JSON as your final message.
   """
 )
 
@@ -145,9 +258,15 @@ capability:spawn-named-checker
   checker: "context-quality-reviewer",
   description: "Project context quality review",
   prompt: """
+    report=CONTEXT
+    harness_root={ROOT}
+    cache_dir={CACHE_DIR}
     project_root={PROJECT_ROOT}
-    Evaluate CLAUDE.md + .claude/rules/* + .gitignore + settings.json + MCP config.
-    Save to /tmp/cc-cache/check-harness/CONTEXT.json.
+    as_of_ms={AS_OF_MS}
+    days=30
+    Evaluate CLAUDE.md + .claude/rules/* + .gitignore + every hook source + MCP config,
+    and the context-audit drift report when present.
+    Return the CONTEXT JSON as your final message.
   """
 )
 
@@ -155,54 +274,163 @@ capability:spawn-named-checker
   checker: "project-automation-auditor",
   description: "Project automation, verification & compounding audit",
   prompt: """
+    report=AUTOMATION
+    harness_root={ROOT}
+    cache_dir={CACHE_DIR}
     project_root={PROJECT_ROOT}
-    session_report=/tmp/cc-cache/check-harness/SESSION_PROJECT.json  (reference if available)
-    Audit test/hooks/verifier/isolation + collect **compounding signals** (git-log-based recent changes to CLAUDE.md·rules·docs·skills·hooks).
-    Save to /tmp/cc-cache/check-harness/AUTOMATION.json.
+    as_of_ms={AS_OF_MS}
+    days=30
+    Audit test/hooks/verifier/isolation from project_signals.py, plus the compounding
+    signals it computes.
+    Return the AUTOMATION JSON as your final message.
   """
 )
 ```
 
-**For Both scope, spawn all 5 in a single message** (project-session and automation-auditor have a dependency, but auditor is designed to run without session — parallel OK).
+**For Both scope, spawn all 5 in a single message.** No analyzer reads another's report: the
+cross-analyzer items (D4, D5, B4, E2) are joined by check-harness in Phase 2 from the saved
+reports.
+
+As each return arrives, save it as-is to `{CACHE_DIR}/<NAME>.json` with `capability:write-file`.
+The analyzers never write that file.
 
 ### Delegation assertion — required before Phase 2 (divergent-procedure rule)
 
 `capability:spawn-named-checker` is a **divergent** procedure: the two runtimes reach it by
-genuinely different means, so parity cannot be guaranteed by running identical bytes. Assert
-**both** of the following before using any result:
+genuinely different means, so parity cannot be guaranteed by running identical bytes. Check every
+analyzer spawned in Phase 1 against all four steps below before using any result. Collect every
+condition first; then, if any step calls for a halt, halt with the named message (one line per
+condition) and print **no score** — a maturity score computed from four of five analyzers,
+presented as a score, misrepresents itself.
 
-1. **Artifact** — each expected JSON exists at its `/tmp/cc-cache/check-harness/` path.
-2. **Registry** — each analyzer appears as actually defined *and* invoked. Under Antigravity,
-   query `manage_subagents`; under Claude Code the spawn is native and its own return is the
-   evidence.
+**1. Spawn return — required evidence.** The analyzer's return must exist and parse as **one JSON
+object** carrying its report's analyzer-owned keys (an analyzer does not repeat script-owned
+fields):
 
-Artifact existence alone is **not** sufficient. An agent that skipped delegation and wrote a
-well-formed `SESSION_REPORT` from its own context produces a file indistinguishable from the
-delegated one — and that is exactly the in-context degradation this skill's maker ≠ checker
-separation exists to prevent. Only the registry check tells them apart.
+| Report | Required keys |
+|---|---|
+| `PORTFOLIO` | `duplicate_clusters`, `trigger_collisions`, `mcp_usage`, `unused_mcp`, `quick_wins`, `script_outputs`, `warnings` |
+| `SESSION_USER`, `SESSION_PROJECT` | `scope`, `period_days`, `automation_suggestions`, `script_outputs`, `warnings` |
+| `CONTEXT` | `project_root`, `claude_md`, `rules`, `sensitive_protection`, `conditional_load_evidence`, `mcp`, `drift_report`, `script_outputs`, `warnings` |
+| `AUTOMATION` | `project_root`, `test_runner_configured`, `test_evidence`, `posttool_format_hook`, `posttool_format_evidence`, `pretool_block_hook`, `pretool_block_evidence`, `verifier_agents`, `isolation`, `risk_findings`, `script_outputs`, `warnings` |
 
-If either assertion fails, **halt and say which** — `unavailable:`, `denied:`, or `unresolved:`
-per the map's Halting table. Do not proceed with a partial set of reports; a maturity score
-computed from four of five analyzers, presented as a score, misrepresents itself.
+CONTEXT and AUTOMATION may also carry an optional `weak_pass_flags` (`[{field, reason}]`), which the Phase 2 WEAK_PASS rule reads.
 
-After both assertions pass, read the JSONs and hold `PORTFOLIO`, `SESSION_USER`, `SESSION_PROJECT`, `CONTEXT`, `AUTOMATION` in memory.
+A return that is missing, does not parse, or lacks a required key halts the run with
+`failed: spawn-named-checker returned no usable result (<analyzer> <NAME>: <reason>)`, naming the
+analyzer and report (session-pattern-analyzer runs twice). A return that passes has been saved to
+`{CACHE_DIR}/<NAME>.json` (Phase 1).
+
+**2. Registry — recorded, and checked where it says something.** Under Claude Code the spawn is
+native and its return is the evidence; there is no registry to query. Under Antigravity, read
+`manage_subagents` once after the returns arrive and record what it said, per analyzer:
+
+| Registry says | Evidence grade (kept for the report footer) | Run |
+|---|---|---|
+| — (Claude Code) | `spawn return (native)` | continues |
+| lists this analyzer as defined and invoked | `spawn return + agy registry` | continues |
+| empty, or could not be read | `spawn return only (agy registry empty)` (or `… (agy registry unreadable)`) | continues |
+| lists other subagents but not this analyzer | — | **halts**: `failed: spawn-named-checker returned no usable result (<analyzer> <NAME>: not in agy registry)` |
+
+An empty registry is observed in some agy sessions and proves nothing either way, so it lowers the
+grade instead of failing the run. A registry that lists other subagents but not this one is a real
+answer: the report was most likely written in-context, which is exactly the self-graded output
+this skill's maker ≠ checker separation exists to prevent.
+
+**3. `script_outputs` status.** For each entry `{script, path, status, exit}` in the return:
+
+| `status` | Effect |
+|---|---|
+| `ran` | none here — step 4 still reads the file |
+| `failed` | that script's fields are N/A with `warning: script failed: <script> exit <exit>` |
+| `missing` | that script's fields are N/A with `warning: script failed: <script> missing` |
+| `denied` | **halts**: `denied: run-command requires permission not granted (<analyzer> <NAME>: <script>)` |
+| `unavailable` | **halts**: `unavailable: run-command not provided by <runtime> (<analyzer> <NAME>: <script>)` |
+
+`denied` and `unavailable` are not script failures: the script never ran, so every item it feeds
+would be N/A and the report would look complete while measuring nothing. Only a script that
+actually ran and failed takes the N/A path.
+
+**4. Script output files — read from the fixed path, never retyped.** check-harness reads every
+script-owned field from the fixed path for that report and script, **whether or not**
+`script_outputs` lists it, and never from the analyzer's prose or JSON:
+
+| Report | Fixed-path files under `{CACHE_DIR}/` | `params` must equal |
+|---|---|---|
+| `PORTFOLIO` | `scratch-PORTFOLIO/inventory.json` | `project_root` = `PROJECT_ROOT` (or `null` when none was passed), `as_of_ms` = `AS_OF_MS`, `dead_days` = 90 |
+| | `scratch-PORTFOLIO/session_files.txt` | `scope` = `overall`, `project_dir` = `null` (the prompt passes none), `days` = 30 |
+| `SESSION_USER` | `scratch-SESSION_USER/session_files.txt` | `scope` = `overall`, `project_dir` = `null` (the prompt passes none), `days` = 30 |
+| | `scratch-SESSION_USER/session_metrics.json` | `session_files` = the same values, `long_session_min` = 20 |
+| `SESSION_PROJECT` | `scratch-SESSION_PROJECT/session_files.txt` | `scope` = `project`, `project_dir` = `PROJECT_ROOT`, `days` = 30 |
+| | `scratch-SESSION_PROJECT/session_metrics.json` | `session_files` = the same values, `long_session_min` = 20 |
+| `CONTEXT` | `scratch-CONTEXT/project_signals.json` | `project_root` = `PROJECT_ROOT`, `as_of_ms` = `AS_OF_MS` |
+| `AUTOMATION` | `scratch-AUTOMATION/project_signals.json` | `project_root` = `PROJECT_ROOT`, `as_of_ms` = `AS_OF_MS` |
+
+A `.json` file's `params` is its top-level `params` object; a `session_files.txt` file's is the
+JSON on its first line, `# params {json}`. Per file, in order — the first that applies decides:
+
+1. The file does not exist → its fields are N/A with `warning: script output missing: <path>`.
+2. It is empty, or does not parse as the script's documented output (a redirect creates the file
+   before a crashing script runs) → N/A with `warning: script failed: <script> (unparseable output)`,
+   whatever `status` the analyzer reported.
+3. Its `params` differs from the values in that spawn's prompt → N/A with
+   `warning: script params mismatch: <script>`.
+4. Otherwise its fields are the script-owned fields of that report for Phase 2.
+
+When a script that another depends on did not run, the dependent script's fixed-path file is
+simply missing, so rule 1 applies. None of these halts the run. Keep every warning from steps 3–4,
+every analyzer `warnings` entry (each analyzer copies its scripts' `warning:` stderr lines there;
+the raw stderr is kept beside the output as `scratch-<NAME>/<script>.stderr`) and every script's
+own `warnings` array: each is listed in the report's findings, and an item fed
+by an affected source is N/A with the warning as its evidence.
+
+After all four steps pass, hold in memory: the five saved reports `PORTFOLIO`, `SESSION_USER`,
+`SESSION_PROJECT`, `CONTEXT`, `AUTOMATION`; the script output files that passed step 4; the
+warnings; the per-analyzer evidence grade; `CACHE_DIR`; and why Project scope is off, if it is.
 
 ---
 
 ## Phase 2 — Checklist Judgment (6-axis mapping)
 
-For each of the 24 items, determine PASS/WEAK_PASS/FAIL/N/A and record an evidence string.
+For each of the 26 items in `references/checklist.md`, determine PASS/WEAK_PASS/FAIL/N/A and
+record an evidence string. Judge only from what the Delegation assertion kept: the saved reports
+and the script output files that passed its step 4.
 
 ### Per-axis data source mapping
 
-| Axis | Source | Scope | Judgment fields |
-|------|--------|-------|-----------------|
-| **1. Scaffolding** | PORTFOLIO | User | summary (A1–A5) |
-| **2. Context** | CONTEXT | Project | claude_md·rules·sensitive (C1–C6) |
-| **3. Planning** | SESSION_USER + AUTOMATION (fallback) | User | plan_first_ratio (B2) OR planning_artifacts_exist |
-| **4. Execution** | SESSION_USER + SESSION_PROJECT | User+Project | delegation/parallel/top_ngram (B3·B5·B6) — **computed for each scope separately** |
-| **5. Verification** | SESSION_PROJECT + AUTOMATION | Project | completion_check + D1–D5 |
-| **6. Compounding** | AUTOMATION.compounding + SESSION (wrap/memory) | Both | E1·B4·E2·E3 |
+**Source rule.** A report name followed by a **script-owned** field means that field of the
+report's fixed-path script file under `{CACHE_DIR}/`; every other field comes from the saved
+analyzer return `{CACHE_DIR}/<NAME>.json`. The script-owned files are:
+
+| Written as | Read from |
+|---|---|
+| `PORTFOLIO.<f>` for `summary`, `plugins`, `mcp_servers`, `skills`, `usage`, `plugin_findings` | `scratch-PORTFOLIO/inventory.json` |
+| `SESSION_USER.<f>` / `SESSION_PROJECT.<f>` for `metrics`, `sessions_analyzed`, `skills_invoked`, `commands_invoked`, `agents_invoked`, `automation_opportunities`, `tool_frequency`, … | `scratch-SESSION_USER/session_metrics.json` / `scratch-SESSION_PROJECT/session_metrics.json` |
+| `AUTOMATION.<f>` for `hooks`, `planning_artifacts`, `ledgers`, `lessons`, `skills`, `agents`, `checker_citations`, `unattended`, `compounding` | `scratch-AUTOMATION/project_signals.json` |
+
+Per item:
+
+| Axis | Item | Field | Report › file |
+|------|------|-------|---------------|
+| **1. Scaffolding** (User) | A1, A2, A3 | `PORTFOLIO.summary.used_last_30d`, `total_installed`, `dead_count`, `ghost_count` | PORTFOLIO › `scratch-PORTFOLIO/inventory.json` |
+| | A4 | `PORTFOLIO.duplicate_clusters` | PORTFOLIO › `PORTFOLIO.json` |
+| | A5 | `PORTFOLIO.summary.prefix_duplicates` + `PORTFOLIO.trigger_collisions` | `inventory.json` + `PORTFOLIO.json` |
+| **2. Context** (Project) | C1–C6 | `CONTEXT.claude_md`, `rules`, `sensitive_protection`, `mcp`, `conditional_load_evidence`, `drift_report` (C2), `weak_pass_flags` | CONTEXT › `CONTEXT.json` |
+| **3. Planning** (User) | B2 | `SESSION_USER.metrics.plan_first_ratio`; fallback `AUTOMATION.planning_artifacts.exist` | `scratch-SESSION_USER/session_metrics.json`; `scratch-AUTOMATION/project_signals.json` |
+| **4. Execution** (User+Project, **each scope separately**) | B3, B5, B6 | `SESSION_*.metrics.delegation_ratio`, `parallel_count`, `top_3gram_share` | `scratch-SESSION_USER/` and `scratch-SESSION_PROJECT/session_metrics.json` |
+| **5. Verification** (Project) | B1 | `SESSION_PROJECT.metrics.completion_check_ratio` | `scratch-SESSION_PROJECT/session_metrics.json` |
+| | D1, D2, D3 | `AUTOMATION.test_runner_configured` / `test_evidence`, `posttool_format_hook` / `posttool_format_evidence`, `pretool_block_hook` / `pretool_block_evidence`, `weak_pass_flags` | AUTOMATION › `AUTOMATION.json` |
+| | D4 (join) | `AUTOMATION.skills[].key`, `AUTOMATION.agents[].key` ∩ `SESSION_PROJECT.skills_invoked`, `commands_invoked`, `agents_invoked` | `project_signals.json` ∩ `scratch-SESSION_PROJECT/session_metrics.json` |
+| | D5 (join) | Set up: `AUTOMATION.verifier_agents` (`AUTOMATION.json`), `AUTOMATION.checker_citations` (`project_signals.json`); Used: `SESSION_PROJECT.skills_invoked`, `commands_invoked`, `agents_invoked` | `AUTOMATION.json` + `project_signals.json` + `scratch-SESSION_PROJECT/session_metrics.json` |
+| | D6 | `AUTOMATION.unattended.conforming`, `unattended.autopilot_files` | `scratch-AUTOMATION/project_signals.json` |
+| **6. Compounding** (Both) | E1, E3 | `AUTOMATION.compounding.*`, `AUTOMATION.lessons.updated_30d`, `lessons.hardened_added_90d`; `AUTOMATION.ledgers` as evidence | `scratch-AUTOMATION/project_signals.json` |
+| | B4 | `SESSION_*.metrics.handoff_ratio` | each `session_metrics.json` |
+| | E2 (join) | `SESSION_*.metrics.learning_write_sessions`, `SESSION_*.skills_invoked`, `commands_invoked` | both `session_metrics.json` |
+
+The report's other sections read: Runtime inventory ← `PORTFOLIO.plugins`, `mcp_servers`,
+`skills`, `plugin_findings` (`inventory.json`) and `PORTFOLIO.mcp_usage`, `unused_mcp`,
+`quick_wins` (`PORTFOLIO.json`); Execution Detail ← `SESSION_*.sessions_analyzed` and
+`metrics.*` (`session_metrics.json`) and `SESSION_*.automation_suggestions` (the saved return).
 
 ### Axis 4 (Execution) note
 
@@ -210,12 +438,76 @@ B3/B5/B6 record **both User and Project values**. Axis-level judgment follows th
 - Both scope: use the **lower** of User/Project for axis judgment (weakest link principle)
 - Single scope: use only that scope's value
 
+B4 likewise records a User and a Project value (Axis 6's User and Project portions); E1, E3 and D6
+are Project values; E2 is one value over both session reports.
+
 ### Status rules
 
 - **PASS** — evidence clearly met
-- **WEAK_PASS** — condition met but `weak_pass_flags` field present in report
+- **WEAK_PASS** — condition met but the report flags it in `weak_pass_flags`, or an item rule
+  below says WEAK_PASS
 - **FAIL** — no evidence or explicit failure
-- **N/A** — no data available (e.g., 0 sessions) or not applicable to project type
+- **N/A** — no data available (e.g., 0 sessions, a `null` ratio), not applicable to the project
+  type, or a **source the item depends on carries a warning**: `source missing`, `unexpected
+  shape`, `git unavailable` (the git-derived fields are `null`), `script failed`, `script output
+  missing` or `script params mismatch` (Delegation assertion steps 3–4). The evidence string is the
+  warning itself. A `null` field is never read as `false` or 0.
+- **OR rules** (B2, E1, E2, E3): PASS when any available term passes; FAIL only when every term
+  was available and none passes; otherwise N/A, naming the warning of the missing term.
+
+### Item rules that combine reports (Phase 2 joins)
+
+No analyzer reads another's report (all are spawned in one message), so check-harness computes
+these joins itself, from the sources in the table above. Keys are compared exactly as the scripts
+printed them (normalised D3 keys, e.g. `harness-ops:loop` vs the built-in `loop`).
+
+**Role match.** A key matches a role list when it equals a full key in the list, or when it is
+bare, is not a built-in, and equals a listed skill part (a user's own standalone `specify`
+counts). A built-in counts only when the list names it explicitly as a bare built-in — the
+built-in `/loop` scheduler never counts as `harness-ops:loop`.
+
+- **B2 — plan first** (OR): `SESSION_USER.metrics.plan_first_ratio ≥ 0.3` → PASS, evidence
+  `"plan_first_ratio: X.XX"`; or `AUTOMATION.planning_artifacts.exist == true` → PASS, evidence
+  the non-zero kinds, e.g. `"planning artifacts: spec 7, design 1"`. With no AUTOMATION
+  (User-scope-only run) evaluate the ratio only, with no error.
+- **C2 — CLAUDE.md quality** (one judge; the drift report corroborates):
+  `CONTEXT.claude_md.quality.contradictions > 0` → FAIL. Contradictions 0, and
+  `CONTEXT.drift_report` is not `null`, its `generated` falls within 30 days of `AS_OF_MS` and
+  its `contradictions ≥ 1` → WEAK_PASS, evidence `drift_report.path`. Otherwise as before:
+  contradictions 0 and ambiguities 0 → PASS (WEAK_PASS when `weak_pass_flags` names
+  `claude_md.quality`). A `generated` that is `null` or cannot be read as a date is not within
+  30 days; a `drift_report.contradictions` of `null` does not count.
+- **D4 — project skills/agents used**: registered = `AUTOMATION.skills[].key` and
+  `AUTOMATION.agents[].key`. PASS when ≥ 1 skill key is in `SESSION_PROJECT.skills_invoked ∪
+  commands_invoked` or ≥ 1 agent key is in `SESSION_PROJECT.agents_invoked`, evidence the
+  matched keys with counts; FAIL when none is; N/A when Project scope is off or SESSION_PROJECT
+  is N/A.
+- **D5 — separate checker set up and used**:
+  - *Set up* = `AUTOMATION.verifier_agents` is non-empty (the auditor already excludes
+    check-harness's four analyzers) or `AUTOMATION.checker_citations` is non-empty.
+  - *Used* = a key in `SESSION_PROJECT.skills_invoked ∪ commands_invoked` role-matches
+    `harness-ops:specify`, `harness-ops:loop`, `harness-ops:coherence-audit`, `harness-ops:crew`
+    or `harness-ops:agent-orchestrate`, or is the built-in `code-review`; or a `verifier_agents`
+    key is in `SESSION_PROJECT.agents_invoked`.
+  - Set up and used → PASS; only one → WEAK_PASS; neither → FAIL. When SESSION_PROJECT is N/A,
+    *Used* is unknown: set up → WEAK_PASS, not set up → N/A (the OR rule: FAIL only when every
+    term was available), with the warning in the evidence.
+- **D6 — unattended runs are bounded**: `AUTOMATION.unattended.conforming` `null` (no real-ledger
+  `autopilot.md`) → N/A; `true` → PASS, evidence the file count; `false` → FAIL, evidence each
+  `unattended.autopilot_files[].path` with its `missing_limits`.
+- **E1 — learning written back** (OR): `AUTOMATION.compounding.claude_md_updated_30d`,
+  `compounding.rules_added_90d > 0`, `compounding.docs_learnings_exist`, or
+  `AUTOMATION.lessons.updated_30d`.
+- **B4 — handoff**: per scope, `SESSION_*.metrics.handoff_ratio ≥ 0.5` (among long sessions).
+- **E2 — learning recorded** (OR, over both session reports): `metrics.learning_write_sessions ≥ 1`
+  in SESSION_USER or SESSION_PROJECT, or any key in `skills_invoked ∪ commands_invoked` of either
+  whose skill part is `session-wrap`, `wrap`, `compound`, `remember` or `handoff` (any owner).
+- **E3 — artifact added in 90 days** (OR): `AUTOMATION.compounding.skills_added_90d ≥ 1`,
+  `compounding.hooks_added_90d ≥ 1`, `compounding.agents_added_90d ≥ 1`, or
+  `AUTOMATION.lessons.hardened_added_90d ≥ 1`.
+
+Every other item follows its Judgment Basis in `references/checklist.md`, read through the source
+table above.
 
 ### Maturity calculation
 
@@ -276,6 +568,8 @@ Using Phase 2 judgments as input, generate the key summary for the top of the re
 - Maximum 7 items
 - **Include at least 1 suggestion based on Runtime inventory (PORTFOLIO)**
 - **Include at least 1 suggestion when Compounding (axis 6) FAILS** — e.g., "add what you learned this session to rules/"
+- **D6 FAIL → always an action** naming each `autopilot.md` and the limits it lacks (an unbounded unattended run is the costliest finding)
+- Every warning kept by the Delegation assertion appears in the findings list, even when it produced no action
 
 ### Action tone enforcement
 
@@ -291,8 +585,8 @@ Using Phase 2 judgments as input, generate the key summary for the top of the re
 
 **Generate all 3 deliverables simultaneously**:
 - **A. Conversation render** (markdown template below) — output immediately
-- **B. report.md** (same content as A) — Write
-- **C. report.html** (based on references/html-template.html, self-contained) — Write, then `open`
+- **B. report.md** (same content as A) — Write to `{REPORT_DIR}/report.md`
+- **C. report.html** (based on references/html-template.html, self-contained) — Write to `{REPORT_DIR}/report.html`, then `open`
 
 ### A/B Markdown template (shared for conversation + report.md)
 
@@ -368,7 +662,7 @@ Using Phase 2 judgments as input, generate the key summary for the top of the re
 | 5. Verification     | 📁 Project  | {NN} | L{n} | {XX}% → L{n+1} |
 | 6. Compounding      | 👤+📁        | {NN} | L{n} | {XX}% → L{n+1} |
 
-Sessions analyzed: User {Nu} / Project {Np} ({period}) · Scanned: {YYYY-MM-DD HH:MM}
+Sessions analyzed: User {Nu} / Project {Np} (one period for both: last 30 days) · Scanned: {YYYY-MM-DD HH:MM}
 
 ---
 
@@ -409,7 +703,7 @@ Sessions analyzed: User {Nu} / Project {Np} ({period}) · Scanned: {YYYY-MM-DD H
 </details>
 
 <details>
-<summary>📋 Full Checklist (6 axes · 24 items)</summary>
+<summary>📋 Full Checklist (6 axes · 26 items)</summary>
 
 ### Axis 1 — Scaffolding (👤 User × Static)
 | ID | L | Item | Status | Evidence |
@@ -424,7 +718,7 @@ Sessions analyzed: User {Nu} / Project {Np} ({period}) · Scanned: {YYYY-MM-DD H
 
 > **B2 judgment rule** (OR condition):
 > 1. `SESSION_USER.metrics.plan_first_ratio ≥ 0.3` → PASS, evidence: `"plan_first_ratio: X.XX"`
-> 2. `AUTOMATION.planning_artifacts_exist == true` → PASS, evidence: `"planning artifacts found: specs/ (N files)"` — count from AUTOMATION
+> 2. `AUTOMATION.planning_artifacts.exist == true` → PASS, evidence: the non-zero kinds, e.g. `"planning artifacts: spec 7, design 1"` — counts from `scratch-AUTOMATION/project_signals.json`
 > 3. AUTOMATION absent (User-scope-only run) → evaluate (1) only, no error
 > 4. Both false → FAIL
 
@@ -439,15 +733,23 @@ Sessions analyzed: User {Nu} / Project {Np} ({period}) · Scanned: {YYYY-MM-DD H
 | ... |
 
 ### Axis 5 — Verification (📁 Project)
-...
+| ID | L | Item | Status | Evidence |
+|----|---|------|--------|----------|
+| B1 | L1 | completion check before session end | PASS | completion_check_ratio: 0.62 |
+| D1 | L1 | test environment | PASS | Makefile:test |
+| D2 | L1 | formatter/linter PostToolUse hook | FAIL | no formatting hook in any source |
+| D3 | L1 | dangerous actions blocked (PreToolUse) | PASS | project PreToolUse/Bash: block-main-push.sh |
+| D4 | L2 | project skills/agents actually used | PASS | harness-ops:loop ×4, git-operator ×2 |
+| D5 | L3 | separate checker set up and used | WEAK_PASS | set up: checker_citations 3 · used: none in project sessions |
+| D6 | L3 | unattended runs are bounded | FAIL | specs/x/autopilot.md missing killswitch_path |
 
 ### Axis 6 — Compounding (👤+📁 × Growth)
 | ID | L | Item | Status | Evidence |
 |----|---|------|--------|----------|
-| E1 | L1 | CLAUDE.md/rules/docs updated in last 30d | PASS | CLAUDE.md updated 2026-04-02 |
-| B4 | L2 | session-wrap/handoff ratio | WEAK_PASS | 0.42 |
-| E2 | L2 | wrap/compound/memory calls ≥1 | PASS | session-wrap: 3 calls |
-| E3 | L3 | new skill/hook/rule in last 90d | FAIL | 0 items |
+| E1 | L1 | CLAUDE.md/rules/docs/loop lessons updated recently | PASS | CLAUDE.md updated within 30d |
+| B4 | L2 | handoff ratio (long sessions) | FAIL | User 0.42 / Project 0.60 |
+| E2 | L2 | learning write or wrap-type skill ≥1 | PASS | learning_write_sessions: 3 |
+| E3 | L3 | new skill/hook/agent or hardened lesson in last 90d | PASS | skills_added_90d: 2, hardened_added_90d: 1 |
 
 </details>
 
@@ -481,7 +783,7 @@ Total installed skills: {N} · Used last 30d: {X} ({%})
 </details>
 
 <details>
-<summary>⚡ Execution Detail (Recent session habits — User vs Project)</summary>
+<summary>⚡ Execution Detail (Session habits — User vs Project, one 30-day period)</summary>
 
 |                          | 👤 User | 📁 Project |
 |--------------------------|-------:|-----------:|
@@ -491,6 +793,9 @@ Total installed skills: {N} · Used last 30d: {X} ({%})
 | handoff ratio            | {X}%   | {X}%       |
 | completion check ratio   | {X}%   | {X}%       |
 | top 3-gram share         | {X}%   | {X}%       |
+| sessions analyzed        | {N}    | {N}        |
+
+Period: last 30 days for both columns (`days=30` in both session scans).
 
 **Automation candidates (repeated patterns)**
 - User: `Read → Edit → Bash(npm test)` — {N} times
@@ -505,13 +810,18 @@ Total installed skills: {N} · Used last 30d: {X} ({%})
 - `.claude/rules/` additions in last 90d: {N}
 - `skills/` additions in last 90d: {N}
 - `hooks/` changes in last 90d: {N}
+- `agents/` additions in last 90d: {N}
 - `docs/learnings/` exists: {Yes/No}
-- session-wrap/compound invocations in sessions: User {N} / Project {N}
+- Loop lessons: {N} real `loop.md` ledgers · updated in last 30d: {Yes/No} · hardened lessons added in last 90d: {N}
+- Durable ledgers: `build_order.md` {N} · `pipeline.md` {N} · `autopilot.md` {N} (conforming: {Yes/No/-})
+- learning writes / wrap-type invocations in sessions: User {N} / Project {N}
 
 **Observations**
 - {e.g., no new rules added to this project recently → learning exists only in the human's head}
 
 </details>
+
+Period: last 30 days (User and Project) · Cache: `{CACHE_DIR}` · Evidence: {PORTFOLIO: grade · SESSION_USER: grade · SESSION_PROJECT: grade · CONTEXT: grade · AUTOMATION: grade}{ · Project scope off: reason}
 
 📁 Saved: {dir}/ · 🌐 Opened: report.html
 ```
@@ -551,6 +861,9 @@ The template (`references/html-template.html`) is a self-contained dark dashboar
    - `{{HEADLINE}}`, `{{STRENGTH}}`, `{{WEAKNESS}}`
    - `{{USER_SCORE}}`, `{{USER_LEVEL}}`, `{{PROJECT_SCORE}}`, `{{PROJECT_LEVEL}}`, `{{COMPOUNDING_SCORE}}`, `{{COMPOUNDING_LEVEL}}` (scores are plain integers; they also drive mini-bar widths via `width:{{…}}%`)
    - `{{SESSION_ID}}`
+   - `{{PERIOD}}` — the one session window, `last 30 days` (User and Project alike)
+   - `{{CACHE_DIR}}` — this run's `CACHE_DIR` (Phase 0)
+   - `{{DELEGATION_EVIDENCE}}` — the per-analyzer evidence grade from the Delegation assertion, e.g. `PORTFOLIO spawn return (native) · SESSION_USER spawn return (native) · …` (spawned analyzers only)
 
    **Ring + grade (computed — see below)**
    - `{{RING_DASHARRAY}}` — the two-value SVG dash for the progress arc
@@ -655,10 +968,10 @@ The template (`references/html-template.html`) is a self-contained dark dashboar
 ## Hard Rules
 
 1. **Do not read prompt content** — session-pattern-analyzer uses tool_use metadata only
-2. **Do not modify project files** — only write reports to `.harness/check-reports/`
+2. **Do not modify project files** — write only reports, and only into this run's own `{REPORT_DIR}` under `.harness/check-reports/`, and this run's `{CACHE_DIR}/<NAME>.json` (analyzers write only their own `{CACHE_DIR}/scratch-<NAME>/`)
 3. **Evidence-based evaluation** — every status must include an evidence string
 4. **Context awareness** — mark N/A for items not applicable to the project type
 5. **Parallel execution** — Phase 1 subagents must be spawned in the same message (5 at once for Both scope)
 6. **Separate User/Project sessions** — call session-pattern-analyzer separately per scope (SESSION_USER, SESSION_PROJECT)
 7. **Axis 6 (Compounding) is a Growth axis** — report as an independent score, not summed with User/Project (time derivative, not a point-in-time aggregate)
-8. **Cache reuse** — the 5 JSON files under `/tmp/cc-cache/check-harness/` can be reused in follow-up analysis
+8. **Cache reuse** — this run's `CACHE_DIR` (created by `mktemp -d` in Phase 0, printed in the report footer) holds the 5 saved reports and the `scratch-<NAME>/` script outputs; they can be reused in follow-up analysis of this run. Never read another run's directory as this run's data
