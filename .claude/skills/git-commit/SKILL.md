@@ -10,23 +10,30 @@ allowed-tools:
 
 # Git Commit Orchestrator
 
-Coordinates git-analyst → git-operator → git-pr-agent as sequential sub-agents to execute the full commit-push-PR workflow.
+You write the commit inputs yourself (direct mode), then run git-operator → git-pr-agent as
+sequential sub-agents to execute the commit-push-PR workflow.
 
-## Execution Mode: Sub-agent (Sequential Pipeline)
+## Execution Mode: Direct mode + Sub-agent (Sequential Pipeline)
 
 ```
-Agent(git-analyst)  →  Agent(git-operator)  →  Agent(git-pr-agent)
-        ↓                       ↓                        ↓
-01_analyst_plan.md    02_operator_report.md      03_pr_result.md
+You (orchestrator)        →  Agent(git-operator)  →  Agent(git-pr-agent)
+        ↓                            ↓                        ↓
+commit-message.txt,          02_operator_report.md      03_pr_result.md
+pr-title.txt, pr-body.md
 ```
+
+There is no analyst step. A `git-analyst` sub-agent would be handed the branch, the file scope,
+the attribution trailers and a description of the change before it starts, so it mostly
+reformats text that already exists — for a sub-agent round-trip per commit. `.claude/agents/git-analyst.md`
+is kept only for git-operator's legacy *pipeline mode*; this skill does not use it.
 
 ## Agent Composition
 
-| Step | Agent | Role | Input | Output |
+| Step | Who | Role | Input | Output |
 |------|-------|------|-------|--------|
-| 1 | git-analyst | Analyze diff, write commit plan | git state | `_workspace/01_analyst_plan.md` |
-| 2 | git-operator | Branch, commit, rebase, push | analyst plan | `_workspace/02_operator_report.md` |
-| 3 | git-pr-agent | Create GitHub PR | analyst plan + operator report | `_workspace/03_pr_result.md` |
+| 1 | You (orchestrator) | Read the diff, decide scope, write message and PR text | git state + the user's request | `_workspace/commit-message.txt`, `pr-title.txt`, `pr-body.md` |
+| 2 | git-operator | Branch, commit, rebase, push | Scope + branch name + message file | `_workspace/02_operator_report.md` |
+| 3 | git-pr-agent | Create GitHub PR | PR text files + operator report | `_workspace/03_pr_result.md` |
 
 ## Workflow
 
@@ -46,52 +53,25 @@ Create `_workspace/` in the project root:
 mkdir -p _workspace
 ```
 
-### Phase 2: Run git-analyst
+### Phase 2: Write the commit inputs yourself (direct mode)
 
-Invoke as a sub-agent and wait for it to complete before proceeding:
+Do this in the main session — do not spawn a sub-agent for it.
 
-```
-Agent(
-  subagent_type: "general-purpose",
-  model: "opus",
-  description: "Git analyst — analyze diff and write commit plan",
-  prompt: "
-    You are the git-analyst agent.
-    Read the full role definition at: <CWD>/.claude/agents/git-analyst.md
+1. Read the change: `git status --short`, `git diff`, and `git diff --cached`.
+2. Decide the **Scope** from the user's request: an explicit path/glob list, or the literal
+   `all changes in the working tree` when they asked for everything with no narrowing. The
+   request is the only place the intended scope exists — it cannot be recovered from the repo.
+3. Decide a **branch name** `type/short-description`. It is used only if `HEAD` is `main`.
+4. Write `_workspace/commit-message.txt` **with the Write tool**: a Conventional Commits subject,
+   an optional body explaining why, then this session's attribution trailers, byte for byte, as
+   the last lines. Use only the trailers the session provides (typically `Co-Authored-By:`, and
+   `Claude-Session:` when given); when it provides none, add none. Never hard-code a model name.
+5. Write `_workspace/pr-title.txt` (one line, usually the commit subject) and
+   `_workspace/pr-body.md` (`## Summary` bullets, `## Test plan` checklist, then the session's
+   pull-request attribution line verbatim if it provides one).
 
-    Task: analyze the current git state and write _workspace/01_analyst_plan.md.
-    Project root: <CWD>
-    Trailers to reproduce verbatim as the last lines of the commit_message block:
-      <paste this session's attribution trailers here, byte for byte — typically a
-       Co-Authored-By: line and a Claude-Session: line. If this session provides
-       none, write the single word: none>
-
-    Required output file format:
-      branch_name: feat/short-description
-      files: |
-        <every changed path, one bare path per line, no status prefix>
-      commit_message: |
-        type(scope): description
-
-        Optional body explaining why.
-
-        <the Trailers given above, verbatim — never invented, never a hard-coded model name>
-      pr_title: type(scope): description
-      pr_body: |
-        ## Summary
-        - bullet 1
-        - bullet 2
-
-        ## Test plan
-        - [ ] ...
-      status: ready
-
-    If nothing to commit, write: status: nothing_to_commit
-  "
-)
-```
-
-After the agent returns, read `_workspace/01_analyst_plan.md`. If `status: nothing_to_commit`, inform the user and stop.
+Use the Write tool rather than `echo` or a heredoc: the file is then the message byte for byte,
+with no shell expansion and no YAML block scalar to extract.
 
 ### Phase 3: Run git-operator
 
@@ -106,24 +86,29 @@ Agent(
     You are the git-operator agent.
     Read the full role definition at: <CWD>/.claude/agents/git-operator.md
 
-    Task: read _workspace/01_analyst_plan.md and execute the git workflow.
+    Mode: DIRECT (step 1 of the role definition). There is no analyst plan, and
+    its absence is not an error.
+    Task: commit, rebase and push.
     Project root: <CWD>
     Scope: <the files the user asked to commit — an explicit path/glob list, or the
             literal 'all changes in the working tree' when they asked for everything>
+    Branch name if HEAD is main: <the branch name from Phase 2>
+    Commit message: already written to _workspace/commit-message.txt — commit it
+    as is; do not rewrite or reformat it.
 
     Steps:
-    1. Read _workspace/01_analyst_plan.md
+    1. Guard: if _workspace/commit-message.txt is missing, empty or all
+       whitespace, report status: empty_commit_message and stop WITHOUT
+       committing.
     2. Check current branch (git rev-parse --abbrev-ref HEAD)
-       - If 'main': git checkout -b <branch_name>
-       - Otherwise: stay on current branch and IGNORE the plan's branch_name
+       - If 'main': git checkout -b <branch name above>
+       - Otherwise: stay on current branch and IGNORE the proposed name
     3. git add -A, then CONFIRM SCOPE: run `git status --short` and compare
-       the staged set against the `Scope:` line above — that line, not the
-       plan, is the reference set (the plan carries the message, never the
-       user's intended file scope). Fall back to the plan's `files:` list only
-       if no Scope line was given. If NEITHER exists, report
-       status: missing_scope, do NOT commit, and stop: never treat "whatever
-       git add -A staged" as the scope, which compares the staged set against
-       itself and passes unconditionally. If anything outside the reference
+       the staged set against the `Scope:` line above — that line is the
+       reference set. If it is missing, report status: missing_scope, do NOT
+       commit, and stop: never treat "whatever git add -A staged" as the
+       scope, which compares the staged set against itself and passes
+       unconditionally. If anything outside the reference
        set is staged, report status: unexpected_scope, do NOT commit, and stop.
        List the staged paths in the report either way — `all changes in the
        working tree` is a legitimate scope but admits everything, so the report
@@ -131,28 +116,12 @@ Agent(
        Use -A, not `git add .` — the latter stages only the subtree below the
        current directory, so running from a subdirectory silently commits a
        subset and makes this very check look clean.
-    4. Commit from a FILE, never with -m. commit_message is a YAML block
-       scalar (commit_message: |) — use the extraction snippet in step 4 of
-       the role definition verbatim: strip the 2-space indent into
-       _workspace/commit-message.txt, then `git commit -F` that file.
-       Use that fixed path, NOT $(mktemp): each command runs in its own
-       shell, so a variable holding a temp path is gone by the next call —
-       including the amend fallback, which is the one recovery path that
-       needs the file. _workspace*/ is gitignored, so it is never committed.
-       Reading commit_message as a single line does NOT yield the subject: it
-       yields the block indicator, the literal pipe character. Committing that
-       gives a commit whose whole message is that one character — subject,
-       body and trailers all gone. -m also exposes backticks, $ and quotes in
-       the message to shell expansion.
-       Guard first: if the extraction is empty or all whitespace, report
-       status: empty_commit_message and stop WITHOUT committing — it means the
-       plan has no commit_message block, or spells it without the `|`.
-       Use the role definition's extraction snippet VERBATIM — do not retype a
-       simpler one. Two rules in it are load-bearing: the block ends at the
-       first line starting in column 0 (not at a guessed key pattern, which
-       misses a hyphenated key like `pr-title:` and swallows the rest of the
-       plan), and the dedent is measured from the block's own first non-blank
-       line (not hard-coded to 2 spaces, which mangles a 4-space block).
+    4. Commit from the FILE, never with -m:
+       `git commit -F _workspace/commit-message.txt`. That fixed path, not
+       $(mktemp), is what the amend fallback re-reads — each command runs in
+       its own shell, so a variable holding a temp path is gone by the next
+       call. _workspace*/ is gitignored, so it is never committed. -m would
+       also expose backticks, $ and quotes in the message to shell expansion.
        Then verify MECHANICALLY, not by eye — use the diff in the role
        definition's step 4, which compares the stored message against the file
        with blank lines and trailing whitespace normalised away on both sides.
@@ -167,39 +136,36 @@ Agent(
        rule reports failure forever for a commit that is sitting on HEAD.
        Do not substitute a grep for the two trailer lines: that passes a commit
        whose body was truncated.
-       Note what that diff does NOT prove: both sides come from
-       commit-message.txt, so it shows the commit matches the FILE, never that
-       the file matches the plan. A botched extraction compares clean. That is
-       why the two rules above carry the weight — extraction has no net.
     5. git fetch origin && git rebase origin/main
        (commit BEFORE rebase — git rebase refuses a dirty index:
         'error: cannot rebase: Your index contains uncommitted changes')
        (re-read the sha after this — rebasing rewrites the commit)
     6. Push the branch that is actually checked out — re-read it with
-       `git rev-parse --abbrev-ref HEAD` and push THAT, never the plan's
-       branch_name. If that re-read returns the literal string `HEAD`, the
+       `git rev-parse --abbrev-ref HEAD` and push THAT, never the proposed
+       branch name. If that re-read returns the literal string `HEAD`, the
        checkout is DETACHED: report status: detached_head with the short sha,
        do NOT push. `git push -u origin HEAD` is refused ("not a full
        refname"), and the commit sits on no branch, so say it exists and can
        be rescued with `git branch <name> <sha>`.
-       Step 2 only checks out <branch_name> when starting from main. On any
-       other branch it keeps the current one, while the analyst still proposes
-       a feat/<short-description> name — usually a DIFFERENT one. In
+       Step 2 only checks out the proposed name when starting from main. On any
+       other branch it keeps the current one, while the orchestrator still
+       proposes a feat/<short-description> name — usually a DIFFERENT one. In
        `git push origin <name>`, <name> names a LOCAL BRANCH to push; it does
-       not mean 'push HEAD as <name>'. So the plan's name either fails with
+       not mean 'push HEAD as <name>'. So the proposed name either fails with
        'error: src refspec <name> does not match any' and pushes nothing, or —
        if a local branch by that name happens to exist — silently pushes THAT
        branch instead, leaving the user's commit unpushed. When step 2 did
-       create the branch, HEAD already equals <branch_name>, so re-reading is
+       create the branch, HEAD already equals that name, so re-reading is
        correct in every case.
        Report the re-read $BRANCH as branch_pushed.
+       Never force-push — the block-main-push hook refuses it on any branch.
 
     Write result to _workspace/02_operator_report.md
   "
 )
 ```
 
-> **The plan's `branch_name` is advisory once a feature branch is checked out.** It decides only
+> **The proposed branch name is advisory once a feature branch is checked out.** It decides only
 > whether step 2 creates a branch off `main`. From step 6 on, the branch that received the commit
 > is the one to push and the one to report.
 
@@ -218,14 +184,19 @@ Agent(
     You are the git-pr-agent.
     Read the full role definition at: <CWD>/.claude/agents/git-pr-agent.md
 
-    Task: create a GitHub PR using the analyst's plan and the operator's result.
+    Task: create a GitHub PR for the branch the operator pushed.
     Project root: <CWD>
 
     Steps:
-    1. Read _workspace/01_analyst_plan.md (pr_title, pr_body)
-    2. Read _workspace/02_operator_report.md (branch_pushed, status)
-    3. If operator status != 'success': write status: upstream_failed and stop
-    4. Run: gh pr create --title '<pr_title>' --body '<pr_body>' --base main
+    1. Read _workspace/02_operator_report.md (branch_pushed, status)
+    2. If operator status != 'success': write status: upstream_failed and stop
+    3. If a PR already exists for branch_pushed (`gh pr view <branch_pushed>
+       --json url`), write status: already_exists with its URL and stop — the
+       push already updated it
+    4. Run: gh pr create --base main --head <branch_pushed>
+              --title "$(cat _workspace/pr-title.txt)"
+              --body-file _workspace/pr-body.md
+       (--body-file, not --body: the body never passes through the shell)
     5. Write result to _workspace/03_pr_result.md
   "
 )
@@ -233,12 +204,12 @@ Agent(
 
 ### Phase 5: Report
 
-Read all three workspace files and report to the user:
+Read both report files and report to the user:
 
 - **Success**: "Branch `<branch_pushed>` pushed. Commit: `<sha>`. PR: `<pr_url>`"
   (use `branch_pushed` from the operator report — the branch that actually received the commit,
-  not the plan's `branch_name`)
-- **Analyst failed**: "Could not determine what to commit. Details: `_workspace/01_analyst_plan.md`"
+  not the proposed branch name)
+- **PR already existed**: "Branch `<branch_pushed>` pushed; it updated the existing PR `<pr_url>`"
 - **Operator failed**: describe the specific error (rebase conflict, push rejected, hook failure)
 - **PR failed**: "Push succeeded but PR creation failed. Branch: `<branch_pushed>`. Error: `<message>`"
 
@@ -247,22 +218,23 @@ Read all three workspace files and report to the user:
 | Error | Response |
 |-------|----------|
 | Nothing to commit | Stop at Phase 0 |
-| `missing_scope` | No scope reached the operator — the Phase 3 prompt had no `Scope:` line and the plan no `files:`. Nothing was committed. Re-invoke Phase 3 with the scope stated |
+| `missing_scope` | No scope reached the operator — the Phase 3 prompt had no `Scope:` line. Nothing was committed. Re-invoke Phase 3 with the scope stated |
 | `unexpected_scope` | Staged set exceeded the stated scope. Nothing was committed — say so, and list the unexpected paths |
-| `empty_commit_message` | The `commit_message` block extracted to nothing. Nothing was committed. Point at `_workspace/01_analyst_plan.md`: the block is missing, or written without `\|` |
+| `empty_commit_message` | `_workspace/commit-message.txt` is missing or blank. Nothing was committed. Rewrite it (Phase 2 step 4) and re-run Phase 3 |
 | Message verification shows `<` lines | A line of the message is missing or altered. Operator amends with `-F` and re-compares; if a `<` line survives, report `commit_failed` with the diff |
 | Message verification shows only `>` lines | A `commit-msg` hook appended to the message. This is a **pass** — report the commit as successful and mention the added lines |
 | `detached_head` | `HEAD` is not on a branch. The commit was made and nothing was pushed. Give the short sha and tell the user to run `git branch <name> <sha>` before checking anything else out |
 | Rebase conflict | Abort the rebase; report files in conflict. The commit is already made and survives the abort — say so, so the user does not fear lost work |
-| Push rejected | Report rejection reason; never force-push |
+| Push rejected | Report rejection reason; never force-push (the block-main-push hook refuses it anyway) |
 | `gh` not authenticated | Suggest `gh auth login` |
 | Pre-commit hook failure | Show hook output; user must fix and re-run |
 
 ## Partial Re-run Support
 
 When the user says "retry push", "redo PR", or "fix the commit message":
-1. Check which `_workspace/0*` file shows a failure
-2. Re-invoke only that agent (skip earlier steps)
+1. Check which `_workspace/0*` report shows a failure
+2. Re-invoke only that agent (skip earlier steps); for "fix the commit message", rewrite
+   `_workspace/commit-message.txt` and have the operator `git commit --amend -F` it
 3. Overwrite only that output file
 
 ## Test Scenarios
@@ -270,7 +242,7 @@ When the user says "retry push", "redo PR", or "fix the commit message":
 ### Happy path
 
 1. User has uncommitted changes on `main`
-2. git-analyst → writes `branch_name: feat/add-logging` and a `commit_message: |` block whose
+2. Orchestrator → proposes `feat/add-logging` and writes `_workspace/commit-message.txt` whose
    subject is `feat(logger): add structured logging`
 3. git-operator → creates branch, commits, rebases, pushes
 4. git-pr-agent → creates PR, returns URL
@@ -278,14 +250,16 @@ When the user says "retry push", "redo PR", or "fix the commit message":
 
 ### Commit message with a body and trailers
 
-1. git-analyst → writes `commit_message: |` with a subject, a body paragraph, and two attribution
-   trailers, each content line indented 2 spaces
-2. git-operator → extracts the block, strips the indent to a temp file, runs `git commit -F`
-3. Operator verifies `git log -1 --format=%B` contains the body and both trailer lines
+1. Orchestrator → writes `_workspace/commit-message.txt` with the Write tool: a subject, a body
+   paragraph, and the session's attribution trailers
+2. git-operator → runs `git commit -F _workspace/commit-message.txt`
+3. Operator diffs `git log -1 --format=%B` against the file (normalised) — no `<` lines
 4. Commit carries the full message
 
-**The regression this guards** (verified): reading `commit_message` as a single line yields the
-literal `|`, and `git commit -m '|'` produces a commit whose entire message is one pipe character.
+**The regression this guards** (verified, under the old analyst pipeline): reading a
+`commit_message: |` block as a single line yields the literal `|`, and `git commit -m '|'`
+produces a commit whose entire message is one pipe character. Direct mode removes that failure
+class — the message is written as a plain file, so there is no block scalar to extract.
 
 **Be exact about the second reason, or it discredits the first.** `-m` is not unconditionally
 unsafe: `git commit -m "$(cat <<'EOF' … EOF)"` with the delimiter **quoted** reproduces backticks,
@@ -294,15 +268,15 @@ unsafe: `git commit -m "$(cat <<'EOF' … EOF)"` with the delimiter **quoted** r
 into a path). So `-F` wins because it takes the requirement to remember that distinction off the
 table entirely, and because the message then exists as a file the amend fallback can re-read.
 
-### Already on a feature branch (the plan's name must not be pushed)
+### Already on a feature branch (the proposed name must not be pushed)
 
 1. User has uncommitted changes on `feat/worktree-dual-runtime-support`, which has an open PR
-2. git-analyst → proposes `branch_name: feat/remove-command-wrappers` (a *different* name)
+2. Orchestrator → proposes `feat/remove-command-wrappers` (a *different* name)
 3. git-operator → step 2 keeps the current branch, step 6 re-reads `HEAD` and pushes
    `feat/worktree-dual-runtime-support`
 4. Report: "Branch `feat/worktree-dual-runtime-support` pushed …"
 
-**The regression this guards** (both outcomes verified against a real remote): pushing the plan's
+**The regression this guards** (both outcomes verified against a real remote): pushing the proposed
 name instead fails with `error: src refspec feat/remove-command-wrappers does not match any`,
 leaving the commit unpushed and the PR unchanged — and if a local branch by that name happens to
 exist, the push succeeds on the **wrong** branch, publishing unrelated work while the user's commit
@@ -341,7 +315,7 @@ operator reports a generic `push_failed`, and the commit stays reachable only th
 
 ### Error path: rebase conflict
 
-1. Analyst writes plan successfully
+1. Orchestrator writes the commit inputs
 2. Operator stages and **commits**, then hits a conflict during `git rebase origin/main`
 3. Operator runs `git rebase --abort` and writes `status: rebase_conflict`
 4. Phase 4 skipped; report: "Rebase conflict in `src/foo.ts`. Your commit is already made locally

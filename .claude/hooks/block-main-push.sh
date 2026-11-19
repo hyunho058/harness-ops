@@ -1,8 +1,13 @@
 #!/bin/bash
-# Hook 5: block commands that push TO the protected branch.
+# Hook 5: block commands that push TO the protected branch, and every force-push.
 #
 # PreToolUse(Bash). Reads the command from the hook JSON and decides from the
 # push's DESTINATION, not from which branch happens to be checked out.
+#
+# Force-push is blocked on ANY branch: --force, --force-with-lease, a short-flag
+# cluster containing f (-f, -uf), or a +refspec. CLAUDE.md says "never force-push";
+# this makes that a guarantee instead of a sentence. --no-force-with-lease and
+# --force-if-includes on their own do not force, so they stay allowed.
 #
 # History of over-blocking in this hook — each fix narrowed it, and every one of
 # them was a guard that refused work it was never meant to refuse:
@@ -85,6 +90,7 @@ while IFS= read -r seg; do
   args=""
   delete=0
   allrefs=0
+  force=0
 
   while [ "$#" -gt 0 ]; do
     tok="$1"; shift
@@ -116,12 +122,22 @@ while IFS= read -r seg; do
       # mistaken for a refspec
       -o|--push-option|--receive-pack|--exec|--repo)
                       [ "$#" -gt 0 ] && shift ;;
-      -*)             : ;;   # any other flag, including --force / -f / -u
+      --force|--force-with-lease|--force-with-lease=*)
+                      force=1 ;;
+      --*)            : ;;   # any other long flag, including --no-force-with-lease
+      -*f*)           force=1 ;;   # -f, or a short cluster holding it: -uf, -fu
+      -*)             : ;;   # any other short flag, e.g. -u
+      +*)             force=1; args="$args $tok" ;;   # +refspec forces that ref
       *)              args="$args $tok" ;;
     esac
   done
 
   [ "$seen_push" -eq 1 ] || continue
+  if [ "$force" -eq 1 ]; then
+    echo "Blocked: force-push is not allowed in this repo, on any branch." >&2
+    echo "         On a rejected push, report it and stop — never overwrite the remote." >&2
+    exit 2
+  fi
   [ "$allrefs" -eq 1 ] && block "--all / --mirror pushes every branch"
 
   # first positional is the remote; the rest are refspecs

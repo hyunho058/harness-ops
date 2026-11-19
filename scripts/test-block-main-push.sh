@@ -95,7 +95,6 @@ run ALLOW "$ON_MAIN" 'git push -u origin feat/x'
 run ALLOW "$ON_MAIN" 'git push origin main:feat/x'
 run ALLOW "$ON_MAIN" 'git push origin :feat/x'
 run ALLOW "$ON_MAIN" 'git push origin -o ci.skip feat/x'
-run ALLOW "$ON_MAIN" 'git push --force-with-lease origin feat/x'
 run ALLOW "$ON_MAIN" 'git push origin refs/heads/feat/x'
 
 echo "== the word appears in a FILENAME, not as the subcommand =="
@@ -132,6 +131,28 @@ run ALLOW "$ON_FEAT" 'git push -u origin feat/x'
 run BLOCK "$ON_FEAT" 'git push origin main'
 run BLOCK "$ON_FEAT" 'git push origin HEAD:main'
 run BLOCK "$ON_FEAT" 'git push origin --delete main'
+
+echo "== force-push is blocked on ANY branch =="
+# CLAUDE.md: "never force-push". The destination check above only protects main;
+# this section is what makes the rule hold on feature branches too.
+run BLOCK "$ON_FEAT" 'git push --force'
+run BLOCK "$ON_FEAT" 'git push -f origin feat/x'
+run BLOCK "$ON_FEAT" 'git push -uf origin feat/x'
+run BLOCK "$ON_FEAT" 'git push origin feat/x --force'
+run BLOCK "$ON_FEAT" 'git push --force-with-lease origin feat/x'
+run BLOCK "$ON_FEAT" 'git push --force-with-lease=feat/x:abc123 origin feat/x'
+run BLOCK "$ON_FEAT" 'git push origin +feat/x'
+run BLOCK "$ON_FEAT" 'git push origin +HEAD:feat/x'
+run BLOCK "$ON_FEAT" 'git -C . push --force origin feat/x'
+run BLOCK "$ON_FEAT" 'git fetch origin && git push -f'
+run BLOCK "$ON_MAIN" 'git push --force-with-lease origin feat/x'
+echo "== ...but flags that do not force, and non-push commands, stay allowed =="
+run ALLOW "$ON_FEAT" 'git push -u origin feat/x'
+run ALLOW "$ON_FEAT" 'git push --no-force-with-lease origin feat/x'
+run ALLOW "$ON_FEAT" 'git push --follow-tags origin feat/x'
+run ALLOW "$ON_FEAT" 'git log --grep=force'
+run ALLOW "$ON_FEAT" 'git fetch --force origin'
+run ALLOW "$ON_FEAT" 'git checkout -f feat/x'
 
 echo "== a broken PATH must not make the guard fail OPEN =="
 # Regression: before the hook normalised PATH, a PATH without `grep` made every
