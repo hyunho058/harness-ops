@@ -33,10 +33,12 @@ so "step 4" means the same thing in both places:
    - **Pipeline mode** — a `git-analyst` ran. Read `_workspace/01_analyst_plan.md` first and abort
      if `status` is not `ready`.
    - **Direct mode** — no analyst ran, and the orchestrator supplies the commit message and the
-     `Scope:` line in your prompt. This is the repository's default: `CLAUDE.md` says not to spawn
-     `git-analyst`, because by the time it runs it has already been handed everything it would
-     write. Write the message to `_workspace/commit-message.txt` yourself and go straight to
-     step 2. There is no plan file to read, and its absence is **not** an error in this mode.
+     `Scope:` line in your prompt. This is the repository's default, and the only mode the
+     `git-commit` skill uses: a `git-analyst` would be handed everything it would write before it
+     starts. The skill writes the message to `_workspace/commit-message.txt` before invoking you —
+     commit that file as is. If the message came in your prompt instead, write it to that path
+     yourself. Then go straight to step 2. There is no plan file to read, and its absence is
+     **not** an error in this mode.
 
    > **Do not treat a missing plan as a hard abort.** `CLAUDE.md` names this file the authoritative
    > procedure *and* routes the normal path around the analyst. A step 1 that unconditionally
