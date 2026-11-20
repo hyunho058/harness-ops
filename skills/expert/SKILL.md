@@ -33,10 +33,10 @@ allowed-tools:
 Create ONE expert agent and install it where the target project will actually load it.
 
 This skill exists because writing an agent file is not the same as having an agent. This
-repository contains the proof: `.claude/agents/git-analyst.md`, `git-operator.md` and
-`git-pr-agent.md` are well-written, committed, and **absent from the session's agent list**
-because they carry no frontmatter. A skill that writes the file and reports success would
-have reported success on all three.
+repository contains the proof: `.claude/agents/git-operator.md` and `git-pr-agent.md` are
+well-written, committed, and **absent from the session's agent list** because they carry no
+frontmatter. A skill that writes the file and reports success would have reported success on
+both.
 
 ---
 

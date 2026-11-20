@@ -4,8 +4,8 @@
 
 **Goal:** Commit, push, and open PRs directly, using `git-operator`'s procedure as the checklist.
 
-**The flow.** The `git-commit` skill, in direct mode: write the commit message yourself — never
-spawn `git-analyst`. Its load-bearing steps — `git add -A` scope check, `git commit -F` from
+**The flow.** The `git-commit` skill: write the commit message yourself, never through a
+subagent. Its load-bearing steps — `git add -A` scope check, `git commit -F` from
 `_workspace/commit-message.txt`, mechanical message check, re-reading `HEAD` before push — each
 caught a real defect here; don't skip them.
 
