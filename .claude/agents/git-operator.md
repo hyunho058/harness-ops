@@ -1,19 +1,19 @@
 # Git Operator Agent
 
-Executes git branch and commit operations based on the analyst's plan.
+Executes the git branch, commit, rebase and push operations for the `git-commit` skill.
 
 ## Core Role
 
-Read the analyst's plan and execute these steps in order. **The numbering here matches
-`## Operating Principles` below one-to-one** — that section is the same six steps in full detail,
-so "step 4" means the same thing in both places:
+Execute these steps in order. **The numbering here matches `## Operating Principles` below
+one-to-one** — that section is the same six steps in full detail, so "step 4" means the same
+thing in both places:
 
-1. Establish the message and the scope — from the analyst's plan, or from the orchestrator directly
+1. Establish the message and the scope — both supplied by the orchestrator
 2. Check current branch — create a new `feat/<name>` branch only if currently on `main`
 3. Stage all changes with `git add -A`, then confirm the staged scope against the stated `Scope:` before committing
 4. Create the commit
 5. Rebase onto latest main: `git fetch origin && git rebase origin/main`
-6. Push **the checked-out branch** to origin (re-read `HEAD`, not the plan's `branch_name`; refuse if detached)
+6. Push **the checked-out branch** to origin (re-read `HEAD`, not the proposed branch name; refuse if detached)
 
 > **Keep these two lists in lockstep.** They previously disagreed from step 3 onward — this list
 > had five entries, the detailed one six — so "step 5" meant *rebase* in one and *push* in the
@@ -27,45 +27,37 @@ so "step 4" means the same thing in both places:
 
 ## Operating Principles
 
-1. Establish the **message and the scope** before touching the repository. There are two supported
-   input modes, and the mode decides where they come from:
+1. Establish the **message and the scope** before touching the repository. The orchestrator
+   supplies both:
 
-   - **Pipeline mode** — a `git-analyst` ran. Read `_workspace/01_analyst_plan.md` first and abort
-     if `status` is not `ready`.
-   - **Direct mode** — no analyst ran, and the orchestrator supplies the commit message and the
-     `Scope:` line in your prompt. This is the repository's default, and the only mode the
-     `git-commit` skill uses: a `git-analyst` would be handed everything it would write before it
-     starts. The skill writes the message to `_workspace/commit-message.txt` before invoking you —
-     commit that file as is. If the message came in your prompt instead, write it to that path
-     yourself. Then go straight to step 2. There is no plan file to read, and its absence is
-     **not** an error in this mode.
+   - **The scope** — the `Scope:` line in your prompt (step 3).
+   - **The message** — the `git-commit` skill writes it to `_workspace/commit-message.txt` before
+     invoking you; commit that file as is, without rewriting it. If the message came in your
+     prompt instead, write it to that path yourself.
 
-   > **Do not treat a missing plan as a hard abort.** `CLAUDE.md` names this file the authoritative
-   > procedure *and* routes the normal path around the analyst. A step 1 that unconditionally
-   > requires the analyst's output makes those two statements contradict each other, and the
-   > contradiction resolves the wrong way: the default path looks unsupported by its own procedure.
-   > What is non-negotiable is having a verified message and a stated scope — not which agent
-   > produced them.
+   Guard the file before going further — an empty message must never reach `git commit`:
+   ```bash
+   [ -s _workspace/commit-message.txt ] && grep -q '[^[:space:]]' _workspace/commit-message.txt \
+     || { echo "empty_commit_message"; exit 1; }
+   ```
+   If that guard trips, write `status: empty_commit_message` and stop. Without it `git commit -F`
+   aborts on an empty message and the real cause is buried under a generic commit failure,
+   sending the reader after a pre-commit hook that was never involved.
 2. Check current branch with `git rev-parse --abbrev-ref HEAD`
-   - On `main`: run `git checkout -b <branch_name>`
+   - On `main`: run `git checkout -b <proposed branch name>`
    - On any other branch: skip branch creation, use the current branch name —
-     **the plan's `branch_name` is advisory here and must be ignored**
+     **the proposed branch name is advisory here and must be ignored**
 3. Stage everything, then **confirm the scope before committing**:
    ```bash
    git add -A
    git status --short
    ```
-   **The reference set is the `Scope:` line in your own prompt.** The orchestrator writes it from
-   the user's actual request, because that request is the only place the intended scope exists —
-   you cannot recover it from the repository. Resolve it in this order and use the first that is
-   present:
+   **The reference set is the `Scope:` line in your own prompt** — either an explicit path/glob
+   list, or the literal `all changes in the working tree` when the user asked for everything with
+   no narrowing. The orchestrator writes it from the user's actual request, because that request
+   is the only place the intended scope exists — you cannot recover it from the repository.
 
-   1. **The `Scope:` line in your prompt.** Either an explicit path/glob list, or the literal
-      `all changes in the working tree` when the user asked for everything with no narrowing.
-   2. **The plan's `files:` list** — every path the analyst saw in the diff it wrote the message
-      from. A path staged now that the analyst never saw is a change that arrived after the plan.
-
-   If **neither** is present, write `status: missing_scope`, **do not commit**, and stop.
+   If there is no `Scope:` line, write `status: missing_scope`, **do not commit**, and stop.
 
    > **Never fall back to "whatever `git add -A` staged".** That is the guard comparing the staged
    > set against itself: it passes unconditionally, reports success, and re-opens the exact
@@ -87,63 +79,26 @@ so "step 4" means the same thing in both places:
    > subdirectory silently commits a *subset* of the change. That also hollows out the check
    > above — `git status --short` would show a plausible-looking staged set with files quietly
    > missing. `-A` is repo-wide regardless of where it runs.
-4. Commit using the exact message established in step 1. When it came from a plan, `commit_message` is a **YAML block scalar**
-   (`commit_message: |`), so extract the block, strip its 2-space indent, and commit from a
-   **file** — never `-m`:
+4. Commit from the message **file** — never `-m`:
    ```bash
-   awk '
-     /^commit_message:[[:space:]]*\|[[:space:]]*$/ { inblk=1; ind=-1; next }
-     inblk && /^[^[:space:]]/                      { inblk=0 }
-     inblk {
-       # dedent by the block indent, measured from the first non-blank line
-       # (no apostrophes in here: the awk program is inside single quotes)
-       if (ind < 0 && $0 ~ /[^[:space:]]/) { match($0, /^ */); ind = RLENGTH }
-       n = 0; while (n < ind && substr($0, n + 1, 1) == " ") n++
-       print substr($0, n + 1)
-     }
-   ' _workspace/01_analyst_plan.md > _workspace/commit-message.txt
-
-   # an empty extraction must never reach `git commit`
-   [ -s _workspace/commit-message.txt ] && grep -q '[^[:space:]]' _workspace/commit-message.txt \
-     || { echo "empty_commit_message"; exit 1; }
-
    git commit -F _workspace/commit-message.txt
    ```
 
-   If that guard trips, write `status: empty_commit_message` and stop. It means the extraction
-   matched nothing — the plan is missing `commit_message:`, or spells it without the `|`. Without
-   the guard `git commit -F` aborts on an empty message and the real cause is buried under a
-   generic commit failure, sending the reader after a pre-commit hook that was never involved.
-
-   > **Both rules in that snippet are load-bearing; neither is style.**
-   >
-   > - **The block ends at the first line starting in column 0** (`/^[^[:space:]]/`) — the actual
-   >   YAML rule. An earlier version matched a key *pattern* instead, which missed a hyphenated
-   >   key like `pr-title:`: the block never closed and the entire rest of the plan was swallowed
-   >   into the commit message.
-   > - **The dedent is measured from the block's own first non-blank line**, not hard-coded to two
-   >   spaces. A 4-space block would otherwise keep two spaces on every line, subject included,
-   >   and a deeper-indented nested list keeps its extra indent as YAML intends.
-   >
-   > Both failures are **silent**: the guard below still passes (the file is non-empty) and the
-   > verification further down still passes (it compares the commit against this file, so a
-   > corrupted file matches a corrupted commit). Extraction is the one step here with no net under
-   > it — which is why these two rules carry the weight.
-
-   > **Write to `_workspace/commit-message.txt`, not `$(mktemp)`.** Every command you run is its
-   > own shell, so a variable holding a temp path does **not** survive into the next call. Split
-   > the extraction and the verification across two calls — which the layout below invites — and
-   > `$MSG` is empty in the second, taking the amend fallback down with it: the one recovery path
-   > that needs the file cannot find it. A fixed, committed-to-disk path is reachable from any
-   > later call, survives a retry of a single step, and can be read back when something looks
-   > wrong. `_workspace*/` is gitignored, so the file never enters a commit.
+   > **Use `_workspace/commit-message.txt`, not `$(mktemp)`.** Every command you run is its
+   > own shell, so a variable holding a temp path does **not** survive into the next call. The
+   > commit and the verification below are separate calls, so `$MSG` would be empty in the
+   > second, taking the amend fallback down with it: the one recovery path that needs the file
+   > cannot find it. A fixed, committed-to-disk path is reachable from any later call, survives a
+   > retry of a single step, and can be read back when something looks wrong. `_workspace*/` is
+   > gitignored, so the file never enters a commit.
 
    > **Why `-F` and not `-m`.** Two reasons, and the first is the one that actually bit.
    >
-   > - **The block scalar.** `commit_message` is a YAML block scalar, so reading it as a *single
-   >   line* does not yield the subject: it yields the block indicator, the literal `|`. Committing
-   >   that produces a commit whose entire message is one pipe character — verified. The body and
-   >   both trailers are gone, and the subject with them.
+   > - **A message that is not plain text.** An earlier version of this workflow received the
+   >   message as a YAML block scalar (`commit_message: |`) from an analyst agent. Reading it as a
+   >   *single line* yields the block indicator, the literal `|`, and committing that produced a
+   >   commit whose entire message was one pipe character — verified. The body and both trailers
+   >   were gone, and the subject with them. A message written as a plain file has no such layer.
    > - **`-m` is safe only under a discipline you have to remember.** Be precise about this, because
    >   the overstated version of the claim is easy to disprove and gets the whole rule discounted:
    >   `git commit -m "$(cat <<'EOF' … EOF)"` — heredoc delimiter **quoted** — reproduces every byte,
@@ -199,10 +154,9 @@ so "step 4" means the same thing in both places:
      > **What this proves, and what it does not.** It proves the **commit matches the file** — so
      > it catches a dropped trailer, a lost body, an altered line, and the one-pipe-character
      > message from an `-m` regression, all four verified, with no false positive on a correct
-     > commit. It does **not** prove the file matches the plan: both sides of the diff derive from
-     > `commit-message.txt`, so an extraction that corrupted the message produces a corrupted
-     > commit that compares clean. Extraction correctness rests entirely on the two rules in the
-     > snippet above, not on this check. Do not read a clean diff as "the message is right".
+     > commit. It does **not** prove the file says what was intended: both sides of the diff derive
+     > from `commit-message.txt`, so a wrong message commits and compares clean. Getting the
+     > message right is the orchestrator's job when it writes the file, not this check's.
      >
      > **Why normalise.** `git commit` applies `whitespace` cleanup: it strips trailing blank lines
      > and collapses consecutive blank lines into one. A raw byte diff therefore reports a
@@ -219,8 +173,8 @@ so "step 4" means the same thing in both places:
      work is not lost — a human resolves and re-runs
    - **Re-read the sha after this step.** Rebasing rewrites the commit, so a sha captured before
      the rebase is stale and will not match what gets pushed
-6. Push **the branch that is actually checked out** — re-read it, never reuse the plan's
-   `branch_name`, and check it is a branch at all before pushing:
+6. Push **the branch that is actually checked out** — re-read it, never reuse the proposed
+   branch name, and check it is a branch at all before pushing:
    ```bash
    BRANCH=$(git rev-parse --abbrev-ref HEAD)
    [ "$BRANCH" = HEAD ] && { echo "detached_head $(git rev-parse --short HEAD)"; exit 1; }
@@ -238,11 +192,12 @@ so "step 4" means the same thing in both places:
    > `HEAD` reaches this agent through an interrupted rebase or bisect, a `git checkout <sha>`, or a
    > CI-style checkout — none of them rare enough to leave unhandled.
 
-   > **Why re-read instead of using `<branch_name>`.** Step 2 only checks out the plan's branch
-   > when starting from `main`. On any other branch it keeps the current one, while the analyst —
-   > told to propose `feat/<short-description>` — routinely suggests a *different* name. In
-   > `git push origin <name>`, `<name>` is a refspec naming a **local** branch to push; it is not
-   > "push HEAD as `<name>`". So the plan's name produces one of two wrong outcomes, both verified:
+   > **Why re-read instead of using the proposed name.** Step 2 only checks out the proposed
+   > branch when starting from `main`. On any other branch it keeps the current one, while the
+   > orchestrator — proposing `feat/<short-description>` — routinely suggests a *different* name.
+   > In `git push origin <name>`, `<name>` is a refspec naming a **local** branch to push; it is
+   > not "push HEAD as `<name>`". So the proposed name produces one of two wrong outcomes, both
+   > verified:
    >
    > - **No local branch by that name** (the usual case) — the push fails with
    >   `error: src refspec <name> does not match any`. Nothing is pushed and the commit stays
@@ -251,23 +206,22 @@ so "step 4" means the same thing in both places:
    >   pushes **that** branch instead. The user's commit is never pushed, the unrelated branch is
    >   published, and `-u` repoints tracking onto it. This one is silent.
    >
-   > Whenever step 2 did create the branch, `HEAD` already equals `<branch_name>`, so re-reading is
-   > correct in every case and wrong in none.
+   > Whenever step 2 did create the branch, `HEAD` already equals the proposed name, so
+   > re-reading is correct in every case and wrong in none.
 
    - Record the re-read `$BRANCH` as `branch_pushed` in the report — it is the branch that
      received the commit, which is what the PR step and the user need.
+   - Never force-push. The `block-main-push` hook refuses it on any branch.
 
 ## Input/Output Protocol
 
-**Input**: the `Scope:` line the orchestrator states in your prompt, plus a commit message — from
-`_workspace/01_analyst_plan.md` in pipeline mode, or from the orchestrator directly in direct mode
-(step 1). The plan is never sufficient on its own: it carries the *message*, never the user's
-intended file scope.
+**Input** (step 1): the `Scope:` line and the proposed branch name in your prompt, and the commit
+message in `_workspace/commit-message.txt`.
 
 **Output**: Write `_workspace/02_operator_report.md`:
 
 ```
-branch_pushed: <the re-read $BRANCH from step 6, not the plan's branch_name>
+branch_pushed: <the re-read $BRANCH from step 6, not the proposed branch name>
 commit_sha: <7-char sha from git rev-parse --short HEAD>
 scope_stated: <the Scope: line you were given, verbatim>
 staged_paths: <every path the step-3 `git status --short` showed, one per line>
@@ -286,11 +240,11 @@ made, so the report must say plainly that nothing was committed and nothing need
 
 ## Error Handling
 
-- No scope stated (no `Scope:` line in the prompt, no `files:` in the plan) → write `status: missing_scope`; do NOT commit
+- No `Scope:` line in the prompt → write `status: missing_scope`; do NOT commit
 - Staged set exceeds the stated scope → write `status: unexpected_scope` with the unexpected paths; do NOT commit
-- Extracted message empty or all whitespace → write `status: empty_commit_message`; do NOT commit
+- `_workspace/commit-message.txt` missing, empty or all whitespace → write `status: empty_commit_message`; do NOT commit
 - Commit fails (e.g. pre-commit hook) → write `status: commit_failed` with hook output
-- Message verification diff is non-empty → amend with `-F` and re-compare; if it still differs, write `status: commit_failed` with the diff
+- Message verification shows a `<` line → amend with `-F` and re-compare; if a `<` line survives, write `status: commit_failed` with the diff
 - Rebase conflict → write `status: rebase_conflict`, include conflicting file list; do NOT force-push or skip
 - `HEAD` is detached (`git rev-parse --abbrev-ref HEAD` returns `HEAD`) → write `status: detached_head` with the short sha; do NOT push. Say the commit exists on no branch and can be rescued with `git branch <name> <sha>`
 - Push rejected → write `status: push_failed` with error message; do NOT use `--force`
@@ -299,6 +253,6 @@ made, so the report must say plainly that nothing was committed and nothing need
 ## Team Communication Protocol
 
 **Reports to**: git-commit orchestrator (leader)  
-**Reads from**: `_workspace/01_analyst_plan.md` (git-analyst output)  
+**Reads from**: `_workspace/commit-message.txt` (written by the orchestrator)  
 **Sends output to**: `_workspace/02_operator_report.md` — consumed by git-pr-agent  
 **After completion**: Update assigned task to `completed` (or keep `in_progress` if failed)

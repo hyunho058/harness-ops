@@ -10,10 +10,10 @@ allowed-tools:
 
 # Git Commit Orchestrator
 
-You write the commit inputs yourself (direct mode), then run git-operator → git-pr-agent as
+You write the commit inputs yourself, then run git-operator → git-pr-agent as
 sequential sub-agents to execute the commit-push-PR workflow.
 
-## Execution Mode: Direct mode + Sub-agent (Sequential Pipeline)
+## Execution Mode: Orchestrator writes inputs + Sub-agent (Sequential Pipeline)
 
 ```
 You (orchestrator)        →  Agent(git-operator)  →  Agent(git-pr-agent)
@@ -22,10 +22,11 @@ commit-message.txt,          02_operator_report.md      03_pr_result.md
 pr-title.txt, pr-body.md
 ```
 
-There is no analyst step. A `git-analyst` sub-agent would be handed the branch, the file scope,
-the attribution trailers and a description of the change before it starts, so it mostly
-reformats text that already exists — for a sub-agent round-trip per commit. `.claude/agents/git-analyst.md`
-is kept only for git-operator's legacy *pipeline mode*; this skill does not use it.
+There is no separate analyst step. An agent that writes the commit message would be handed the
+branch, the file scope, the attribution trailers and a description of the change before it
+starts, so it would mostly reformat text that already exists — for a sub-agent round-trip per
+commit. The `git-analyst` agent that did this, and git-operator's pipeline mode that read its
+plan, were removed for that reason.
 
 ## Agent Composition
 
@@ -53,7 +54,7 @@ Create `_workspace/` in the project root:
 mkdir -p _workspace
 ```
 
-### Phase 2: Write the commit inputs yourself (direct mode)
+### Phase 2: Write the commit inputs yourself
 
 Do this in the main session — do not spawn a sub-agent for it.
 
@@ -86,8 +87,6 @@ Agent(
     You are the git-operator agent.
     Read the full role definition at: <CWD>/.claude/agents/git-operator.md
 
-    Mode: DIRECT (step 1 of the role definition). There is no analyst plan, and
-    its absence is not an error.
     Task: commit, rebase and push.
     Project root: <CWD>
     Scope: <the files the user asked to commit — an explicit path/glob list, or the
@@ -258,8 +257,8 @@ When the user says "retry push", "redo PR", or "fix the commit message":
 
 **The regression this guards** (verified, under the old analyst pipeline): reading a
 `commit_message: |` block as a single line yields the literal `|`, and `git commit -m '|'`
-produces a commit whose entire message is one pipe character. Direct mode removes that failure
-class — the message is written as a plain file, so there is no block scalar to extract.
+produces a commit whose entire message is one pipe character. Writing the message directly
+removes that failure class — the message is written as a plain file, so there is no block scalar to extract.
 
 **Be exact about the second reason, or it discredits the first.** `-m` is not unconditionally
 unsafe: `git commit -m "$(cat <<'EOF' … EOF)"` with the delimiter **quoted** reproduces backticks,
